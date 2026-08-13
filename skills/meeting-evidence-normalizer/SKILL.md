@@ -20,6 +20,14 @@ If no config exists, ask the user where meeting outputs should be written, wheth
 Use `--dry-run` before processing real audio. Use `--preflight` to verify local tools and configuration.
 Use `--force --reuse-raw` when `transcription.raw.json` already exists and only derived artifacts need to be regenerated after glossary or policy changes.
 
+Harvest glossary candidates from a repository before a human or higher-level agent enriches a private glossary:
+
+```bash
+skills/meeting-evidence-normalizer/scripts/glossary-harvest --repo "/absolute/path/to/repo"
+```
+
+The harvest output is candidate-only. Do not merge it into a private glossary without review.
+
 ## Workflow
 
 1. Load config from `--config`, then project-local config discovery, then user-level config discovery, then safe defaults.
@@ -50,6 +58,7 @@ Never write private glossary content into this public skill. Keep real project t
 ## Glossary Behavior
 
 Read `references/glossary-guide.md` before creating or editing a glossary.
+Read `references/glossary-harvest-guide.md` before harvesting glossary candidates from code.
 Read `references/glossary.schema.yaml` when validating a glossary shape.
 Use `references/glossary.example.yaml` only as neutral examples.
 
@@ -63,6 +72,17 @@ The glossary is a hint source, not a license to rewrite uncertain audio.
 
 For context-only or ASR-variant matches, mark results as review candidates and preserve the matched raw text.
 Do not promote meeting claims or glossary candidates to canonical facts without user or source validation.
+
+## Glossary Harvest
+
+Use `scripts/glossary-harvest` when a user wants to bootstrap or refresh a private glossary from a code repository.
+
+- Keep harvest deterministic, offline, and local.
+- Use declarative profiles from `profiles/`; do not add stack-specific logic to scripts.
+- Emit `glossary-candidates.yaml` and `glossary-harvest-report.md` as review artifacts.
+- Treat every harvested term as `confidence: candidate`.
+- Keep real repository validation outputs outside Git.
+- Use `--transcripts <dir>` only when processed meeting outputs are available and the user authorizes using them for local spokenness scoring.
 
 ## Safety Rules
 
@@ -81,5 +101,6 @@ Read only what the task needs:
 - `references/output-contract.md` for artifact shapes.
 - `references/normalization-policy.md` for allowed and forbidden normalization behavior.
 - `references/glossary-guide.md` for how to build a private glossary.
+- `references/glossary-harvest-guide.md` for deterministic repository harvesting.
 - `references/glossary.schema.yaml` for glossary fields.
 - `references/glossary.example.yaml` for neutral examples.

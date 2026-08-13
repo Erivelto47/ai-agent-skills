@@ -1,0 +1,15 @@
+activo
+aprobado
+cuenta
+dato
+error
+estado
+nombre
+nuevo
+pendiente
+respuesta
+tipo
+usuario
+valor
+viejo
+

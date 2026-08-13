@@ -1,0 +1,15 @@
+ativo
+conta
+dado
+erro
+nome
+novo
+pendente
+resposta
+solicitacao
+status
+tipo
+usuario
+valor
+velho
+

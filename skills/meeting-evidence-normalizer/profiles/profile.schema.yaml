@@ -1,0 +1,28 @@
+schema_version: 1
+required:
+  - name
+  - description
+  - extractors
+fields:
+  name: string
+  description: string
+  detect:
+    any_file_glob:
+      - string
+    weight: number
+  exclude_glob:
+    - string
+  extractors:
+    - id: string
+      category: string
+      kind: content_regex|filename_regex|path_segment|markdown_heading
+      file_glob:
+        - string
+      pattern: string
+      capture: string_or_integer
+      weight: number
+      emits: term|alias_pair
+      depths:
+        - integer
+      max_level: integer
+

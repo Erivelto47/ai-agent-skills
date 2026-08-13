@@ -1,0 +1,64 @@
+name: generic
+description: Stack-agnostic signals for repositories with unknown technology.
+
+detect:
+  any_file_glob: []
+  weight: 0
+
+exclude_glob:
+  - "**/.git/**"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/vendor/**"
+  - "**/target/**"
+  - "**/__pycache__/**"
+
+extractors:
+  - id: screaming_snake_identifiers
+    category: status
+    kind: content_regex
+    file_glob:
+      - "**/*"
+    pattern: '\b([A-Z][A-Z0-9_]{3,})\b'
+    capture: 1
+    weight: 0.7
+
+  - id: top_path_segments
+    category: module
+    kind: path_segment
+    depths:
+      - 1
+      - 2
+    weight: 0.45
+
+  - id: migration_filename_concepts
+    category: business_concept
+    kind: filename_regex
+    file_glob:
+      - "**/*"
+    pattern: '^(?:V\d+__|\d{8,}[_-]|\d+_)(?P<term>.+?)\.(?:sql|xml|yaml|yml|py|rb)$'
+    capture: term
+    weight: 1.1
+
+  - id: generic_rename_history
+    category: alias_history
+    kind: filename_regex
+    file_glob:
+      - "**/*"
+    pattern: '(?:rename|renamed)[_-](?P<old>.+?)[_-]to[_-](?P<new>.+?)(?:\.[A-Za-z0-9]+)?$'
+    emits: alias_pair
+    weight: 1.4
+
+  - id: docs_headings
+    category: business_concept
+    kind: markdown_heading
+    file_glob:
+      - "docs/**/*.md"
+      - "adr/**/*.md"
+      - "rfc/**/*.md"
+      - "README.md"
+      - "**/README.md"
+    max_level: 3
+    weight: 0.9
+

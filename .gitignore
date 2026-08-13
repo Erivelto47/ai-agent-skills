@@ -13,4 +13,5 @@ docs/calls-transcript/
 *.local.yaml
 *.private.yaml
 private/
-
+glossary-candidates*.yaml
+glossary-harvest-report*.md

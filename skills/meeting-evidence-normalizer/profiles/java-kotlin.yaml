@@ -1,0 +1,147 @@
+name: java-kotlin
+description: Public Java and Kotlin ecosystem conventions for glossary candidate harvesting.
+
+detect:
+  any_file_glob:
+    - "pom.xml"
+    - "build.gradle"
+    - "build.gradle.kts"
+    - "settings.gradle"
+    - "settings.gradle.kts"
+    - "src/**/*.java"
+    - "src/**/*.kt"
+  weight: 10
+
+exclude_glob:
+  - "**/.git/**"
+  - "**/target/**"
+  - "**/build/**"
+  - "**/.gradle/**"
+  - "**/generated/**"
+  - "**/node_modules/**"
+
+extractors:
+  - id: kotlin_enum_constants
+    category: status
+    kind: content_regex
+    file_glob:
+      - "**/*.kt"
+    pattern: '^\s*([A-Z][A-Z0-9_]{2,})\s*(?:[,;(]|\{)'
+    capture: 1
+    weight: 1.2
+
+  - id: java_enum_constants
+    category: status
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+    pattern: '^\s*([A-Z][A-Z0-9_]{2,})\s*(?:[,;(]|\{)'
+    capture: 1
+    weight: 1.2
+
+  - id: kotlin_sealed_subtypes
+    category: status
+    kind: content_regex
+    file_glob:
+      - "**/*.kt"
+    pattern: '^\s*(?:data\s+)?(?:object|class)\s+([A-Z][A-Za-z0-9]+)\b.*:\s*[A-Z][A-Za-z0-9.<>]+'
+    capture: 1
+    weight: 1.1
+
+  - id: table_names
+    category: database_entity
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+      - "**/*.kt"
+    pattern: '@Table\s*\(\s*name\s*=\s*"([^"]+)"'
+    capture: 1
+    weight: 1.5
+
+  - id: entity_class_names
+    category: database_entity
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+      - "**/*.kt"
+    pattern: '^\s*(?:public\s+)?(?:data\s+)?class\s+([A-Z][A-Za-z0-9]*Entity)\b'
+    capture: 1
+    weight: 1.1
+
+  - id: dto_class_names
+    category: data_object
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+      - "**/*.kt"
+    pattern: '^\s*(?:public\s+)?(?:data\s+)?class\s+([A-Z][A-Za-z0-9]*(?:Dto|DTO|Request|Response))\b'
+    capture: 1
+    weight: 0.9
+
+  - id: maven_modules
+    category: module
+    kind: content_regex
+    file_glob:
+      - "**/pom.xml"
+    pattern: '<module>([^<]+)</module>'
+    capture: 1
+    weight: 1.3
+
+  - id: gradle_modules
+    category: module
+    kind: content_regex
+    file_glob:
+      - "**/settings.gradle"
+      - "**/settings.gradle.kts"
+    pattern: 'include\s*\(?\s*["'']:?([^"'')]+)["'']'
+    capture: 1
+    weight: 1.3
+
+  - id: migration_concepts
+    category: business_concept
+    kind: filename_regex
+    file_glob:
+      - "**/*"
+    pattern: '^(?:V[0-9._]+__|R__|[0-9]{8,}[_-])(?P<term>.+?)\.(?:sql|xml|yaml|yml)$'
+    capture: term
+    weight: 1.2
+
+  - id: migration_rename_history
+    category: alias_history
+    kind: filename_regex
+    file_glob:
+      - "**/*"
+    pattern: '(?:rename|renamed)[_-](?P<old>.+?)[_-]to[_-](?P<new>.+?)(?:\.(?:sql|xml|yaml|yml))?$'
+    emits: alias_pair
+    weight: 1.6
+
+  - id: configuration_prefixes
+    category: configuration
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+      - "**/*.kt"
+    pattern: '@ConfigurationProperties\s*\(\s*(?:prefix\s*=\s*)?"([^"]+)"'
+    capture: 1
+    weight: 1.0
+
+  - id: request_mapping_paths
+    category: endpoint
+    kind: content_regex
+    file_glob:
+      - "**/*.java"
+      - "**/*.kt"
+    pattern: '@(?:RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*\(\s*(?:value\s*=\s*)?"([^"]+)"'
+    capture: 1
+    weight: 0.8
+
+  - id: docs_headings
+    category: business_concept
+    kind: markdown_heading
+    file_glob:
+      - "docs/**/*.md"
+      - "adr/**/*.md"
+      - "**/README.md"
+    max_level: 3
+    weight: 0.9
+
