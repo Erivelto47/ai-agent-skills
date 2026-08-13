@@ -1,0 +1,71 @@
+schema_version: 1
+terms:
+  - canonical: ExampleProduct
+    category: product
+    aliases:
+      - Example Product
+      - sample product
+    phonetic_aliases:
+      - egzampul product
+      - example prod
+    observed_asr_variants:
+      - value: example prod act
+        source: sample-transcript.raw.json
+        confidence: hypothesis
+    context_keywords:
+      - plan
+      - subscription
+      - price
+      - customer
+    possible_contexts:
+      - role: product
+        confidence: candidate
+        cues:
+          - plan
+          - customer
+      - role: billing_object
+        confidence: candidate
+        cues:
+          - subscription
+          - price
+    ambiguity_note: This neutral term may refer to a product or a billing object depending on nearby words.
+    languages:
+      - en
+    sources:
+      - path: examples/neutral-meeting/sample-notes.md
+        evidence_type: neutral_example
+    confidence: example_only
+    notes: Example only. Replace with a private glossary term outside this public repository.
+
+  - canonical: ExampleRegion
+    category: region
+    aliases:
+      - sample region
+    phonetic_aliases:
+      - sample ree-jun
+    observed_asr_variants: []
+    context_keywords:
+      - locale
+      - country
+      - market
+      - currency
+    possible_contexts:
+      - role: region
+        confidence: candidate
+        cues:
+          - country
+          - market
+      - role: localization_scope
+        confidence: candidate
+        cues:
+          - locale
+          - currency
+    ambiguity_note: Regions can be geography, localization scope, or business market.
+    languages:
+      - en
+    sources:
+      - path: examples/neutral-meeting/sample-notes.md
+        evidence_type: neutral_example
+    confidence: example_only
+    notes: Example only.
+

@@ -1,0 +1,28 @@
+schema_version: 1
+terms:
+  - canonical: string
+    category: string
+    aliases:
+      - string
+    phonetic_aliases:
+      - string
+    observed_asr_variants:
+      - value: string
+        source: string
+        confidence: observed_or_hypothesis
+    context_keywords:
+      - string
+    possible_contexts:
+      - role: string
+        confidence: high_medium_low_or_candidate
+        cues:
+          - string
+    ambiguity_note: string
+    languages:
+      - string
+    sources:
+      - path: string
+        evidence_type: string
+    confidence: high_medium_low_or_candidate
+    notes: string
+

@@ -1,0 +1,46 @@
+# Copy this file outside the public repository before adding private paths or glossary terms.
+
+recordings:
+  root: ~/Meetings
+  extensions:
+    - .mp4
+    - .m4a
+    - .mp3
+    - .wav
+
+outputs:
+  root: ./outputs/meeting-evidence
+
+transcription:
+  # Supported values: none, custom_command.
+  provider: custom_command
+
+  # Command templates can use:
+  # - {audio}: source audio path
+  # - {output_dir}: output directory
+  # - {output_name}: raw transcript basename without extension
+  #
+  # Example for mlx_whisper:
+  # command:
+  #   - mlx_whisper
+  #   - "{audio}"
+  #   - "--model"
+  #   - "mlx-community/whisper-large-v3-mlx"
+  #   - "--output-dir"
+  #   - "{output_dir}"
+  #   - "--output-format"
+  #   - "json"
+  #   - "--output-name"
+  #   - "{output_name}"
+  #   - "--verbose"
+  #   - "False"
+  command: []
+  output_name: transcription.raw
+  output_format: json
+  cloud_fallback: false
+
+glossary:
+  # Keep real glossary files private and outside this public repository.
+  path: ""
+  mode: hints_only
+

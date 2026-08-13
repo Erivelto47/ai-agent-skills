@@ -1,0 +1,5 @@
+interface:
+  display_name: Meeting Evidence Normalizer
+  short_description: Normalize meeting transcripts into evidence with glossary-aware term discovery.
+  default_prompt: Process a local meeting recording or raw transcript into traceable meeting evidence using a private glossary when available.
+

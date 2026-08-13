@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime meeting artifacts can contain sensitive data.
+outputs/
+docs/calls-transcript/
+*.raw.json
+*.transcript.json
+
+# Local/private user configuration.
+*.local.yaml
+*.private.yaml
+private/
+
