@@ -55,6 +55,7 @@ extractors:
     kind: markdown_heading
     file_glob:
       - "docs/**/*.md"
+      - "reports/**/*.md"
       - "adr/**/*.md"
       - "rfc/**/*.md"
       - "README.md"
