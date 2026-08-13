@@ -16,6 +16,7 @@ motivo
 nome
 novo
 objetivo
+para
 pendente
 problema
 regras

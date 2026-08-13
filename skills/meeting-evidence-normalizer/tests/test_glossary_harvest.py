@@ -135,6 +135,31 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         active = self.term("Active")["harvest"]["score"]
         self.assertGreater(distinctive, active)
 
+    def test_prior_harvest_outputs_are_never_scanned_as_sources(self) -> None:
+        self.write("src/status.txt", "QUARTZ_SIGNAL\n")
+        self.write(
+            "reports/glossary-candidates-old.yaml",
+            """schema_version: 1
+terms:
+  - canonical: QUARTZ_SIGNAL
+    sources:
+      - path: notes/phantom-lumen.md
+        line: 7
+  - canonical: PHANTOM_LUMEN
+""",
+        )
+
+        self.run_cli("--profile", "generic")
+
+        names = {item["canonical"] for item in self.load_terms()}
+        quartz = self.term("QUARTZ SIGNAL")
+        source_paths = {source["path"] for item in self.load_terms() for source in item["sources"]}
+        self.assertIn("QUARTZ SIGNAL", names)
+        self.assertNotIn("PHANTOM LUMEN", names)
+        self.assertEqual(quartz["harvest"]["file_count"], 1)
+        self.assertEqual({source["path"] for source in quartz["sources"]}, {"src/status.txt"})
+        self.assertNotIn("reports/glossary-candidates-old.yaml", source_paths)
+
     def test_transcripts_boost_spoken_term_against_equally_distinctive_term(self) -> None:
         self.write("src/a/status.txt", "SAMPLE_BRIDGE\n")
         self.write("src/b/status.txt", "PUBLIC_RIVER\n")

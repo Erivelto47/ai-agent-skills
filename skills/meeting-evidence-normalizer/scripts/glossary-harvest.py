@@ -31,6 +31,12 @@ SKILL_DIR = SCRIPT_DIR.parent
 PROFILES_DIR = SKILL_DIR / "profiles"
 COMMON_WORDS_DIR = SKILL_DIR / "references" / "common-words"
 WORD_CHAR_CLASS = r"A-Za-zÀ-ÖØ-öø-ÿ0-9_"
+ALWAYS_EXCLUDE_GLOB = (
+    "**/glossary-candidates*.yaml",
+    "**/glossary-harvest-report*.md",
+    "**/glossary-confirmed*.yaml",
+    "**/glossary-confirm-report*.md",
+)
 
 VALID_PROFILE_KEYS = {"name", "description", "detect", "exclude_glob", "extractors"}
 VALID_DETECT_KEYS = {"any_file_glob", "weight"}
@@ -297,6 +303,7 @@ def harvest(repo: Path, profile: Profile, detection: dict[str, Any], transcripts
 
 
 def list_repo_files(repo: Path, exclude_glob: tuple[str, ...]) -> list[Path]:
+    exclude_patterns = ALWAYS_EXCLUDE_GLOB + exclude_glob
     git_files = git_tracked_files(repo)
     if git_files is None:
         paths = [p for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts]
@@ -312,7 +319,7 @@ def list_repo_files(repo: Path, exclude_glob: tuple[str, ...]) -> list[Path]:
         repo_paths.append((rel, path))
     filtered = []
     for rel, path in sorted(repo_paths):
-        if any(match_glob(rel, pattern) for pattern in exclude_glob):
+        if any(match_glob(rel, pattern) for pattern in exclude_patterns):
             continue
         if is_probably_text(path):
             filtered.append(path)
