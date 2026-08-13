@@ -1,0 +1,21 @@
+name: docs-vault
+description: Documentation/notes vault with no application code, detected by the presence of a .obsidian directory.
+
+detect:
+  any_file_glob:
+    - ".obsidian"
+  weight: 8
+
+exclude_glob:
+  - ".git/**"
+  - ".obsidian/**"
+  - ".trash/**"
+
+extractors:
+  - id: vault_note_headings
+    category: business_concept
+    kind: markdown_heading
+    file_glob:
+      - "**/*.md"
+    max_level: 3
+    weight: 0.9
