@@ -36,6 +36,10 @@ DEFAULT_CONFIG = {
         "path": "",
         "mode": "hints_only",
     },
+    "quality": {
+        "repetition_min_run": 5,
+        "asr_degeneration_segment_ratio": 0.15,
+    },
 }
 
 
@@ -51,6 +55,11 @@ USER_CONFIG_CANDIDATES = (
     Path.home() / ".config" / "meeting-evidence-normalizer" / "profile.yaml",
     Path.home() / ".meeting-evidence-normalizer.yaml",
 )
+WORD_CHAR_CLASS = r"A-Za-zÀ-ÖØ-öø-ÿ0-9_"
+SHORT_CANDIDATE_MIN_LENGTH = 5
+DEFAULT_REPETITION_MIN_RUN = 5
+DEFAULT_ASR_DEGENERATION_SEGMENT_RATIO = 0.15
+EXCLUDED_TEXT_WORD_LIMIT = 16
 
 
 class MeetingNormalizerError(Exception):
@@ -272,7 +281,11 @@ def raw_segments(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def analyze_transcript(raw: dict[str, Any]) -> dict[str, Any]:
+def analyze_transcript(
+    raw: dict[str, Any],
+    repetition_min_run: int = DEFAULT_REPETITION_MIN_RUN,
+    asr_degeneration_segment_ratio: float = DEFAULT_ASR_DEGENERATION_SEGMENT_RATIO,
+) -> dict[str, Any]:
     segments = raw_segments(raw)
     suspicious = []
     for segment in segments:
@@ -293,16 +306,61 @@ def analyze_transcript(raw: dict[str, Any]) -> dict[str, Any]:
                 "end": segment.get("end"),
                 "reasons": reasons,
             })
+    repetition_runs = detect_repetition_runs(segments, repetition_min_run)
     duration = max((s.get("end") or 0 for s in segments), default=None)
+    segments_excluded = sum(run["count"] for run in repetition_runs)
+    asr_degeneration_suspected = any(
+        len(segments) > 0 and (run["count"] / len(segments)) > asr_degeneration_segment_ratio
+        for run in repetition_runs
+    )
     return {
         "schema_version": 1,
         "segment_count": len(segments),
         "duration_seconds": duration,
         "low_confidence_ranges": suspicious,
+        "repetition_runs": repetition_runs,
+        "asr_degeneration_suspected": asr_degeneration_suspected,
+        "segments_excluded": segments_excluded,
+        "repetition_min_run": repetition_min_run,
+        "asr_degeneration_segment_ratio": asr_degeneration_segment_ratio,
         "metrics_available": sorted({
             k for s in segments for k in ("avg_logprob", "compression_ratio", "no_speech_prob") if s.get(k) is not None
         }),
     }
+
+
+def detect_repetition_runs(segments: list[dict[str, Any]], min_run: int) -> list[dict[str, Any]]:
+    runs = []
+    current_text = ""
+    current_start = 0
+    for index, segment in enumerate(segments + [{"text": None}]):
+        text = normalize_repetition_text(str(segment.get("text", ""))) if index < len(segments) else None
+        if text and text == current_text:
+            continue
+        if current_text:
+            count = index - current_start
+            if count >= min_run:
+                first = segments[current_start]
+                last = segments[index - 1]
+                runs.append({
+                    "text": collapse_spaces(str(first.get("text", ""))),
+                    "start_segment_id": first.get("id"),
+                    "end_segment_id": last.get("id"),
+                    "count": count,
+                    "start": first.get("start"),
+                    "end": last.get("end"),
+                })
+        current_text = text or ""
+        current_start = index
+    return runs
+
+
+def normalize_repetition_text(text: str) -> str:
+    return collapse_spaces(text).casefold()
+
+
+def collapse_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def load_glossary_terms(path_value: str) -> list[dict[str, Any]]:
@@ -372,6 +430,7 @@ def normalize_transcript(raw: dict[str, Any], glossary_path: str) -> dict[str, A
         })
     return {
         "schema_version": 1,
+        "glossary_configured": bool(terms),
         "normalization_policy": {
             "raw_preserved": True,
             "glossary_is_hint": True,
@@ -384,7 +443,6 @@ def normalize_transcript(raw: dict[str, Any], glossary_path: str) -> dict[str, A
 
 
 def find_term_hits(text: str, terms: list[dict[str, Any]]) -> list[dict[str, str]]:
-    lowered = text.lower()
     hits = []
     for term in terms:
         canonical = str(term.get("canonical", ""))
@@ -394,14 +452,17 @@ def find_term_hits(text: str, terms: list[dict[str, Any]]) -> list[dict[str, str
             if isinstance(values, list):
                 candidates.extend((key, str(v)) for v in values)
         for match_type, candidate in candidates:
-            if candidate and candidate.lower() in lowered:
+            if candidate and candidate_matches(text, candidate):
                 hit = {
                     "canonical": canonical,
                     "matched": candidate,
                     "match_type": match_type,
                     "confidence": str(term.get("confidence", "unknown")),
                 }
-                if match_type == "observed_asr_variants":
+                if is_short_candidate(candidate):
+                    hit["confidence"] = "short_alias_review"
+                    hit["action"] = "review_raw_before_normalizing"
+                elif match_type == "observed_asr_variants":
                     hit["confidence"] = "variant_candidate"
                     hit["action"] = "review_raw_before_normalizing"
                 hits.append(hit)
@@ -410,7 +471,6 @@ def find_term_hits(text: str, terms: list[dict[str, Any]]) -> list[dict[str, str
 
 
 def find_context_candidates(text: str, terms: list[dict[str, Any]], hits: list[dict[str, str]]) -> list[dict[str, Any]]:
-    lowered = text.lower()
     hit_names = {hit["canonical"] for hit in hits}
     candidates = []
     for term in terms:
@@ -420,7 +480,7 @@ def find_context_candidates(text: str, terms: list[dict[str, Any]], hits: list[d
         keywords = term.get("context_keywords")
         if not isinstance(keywords, list):
             continue
-        matched = [str(keyword) for keyword in keywords if str(keyword).lower() in lowered]
+        matched = [str(keyword) for keyword in keywords if candidate_matches(text, str(keyword))]
         if matched:
             candidates.append({
                 "canonical": canonical,
@@ -430,6 +490,25 @@ def find_context_candidates(text: str, terms: list[dict[str, Any]], hits: list[d
                 "action": "review_raw_before_normalizing",
             })
     return candidates
+
+
+def candidate_matches(text: str, candidate: str) -> bool:
+    pattern = candidate_pattern(candidate)
+    return bool(pattern and pattern.search(text))
+
+
+def candidate_pattern(candidate: str) -> re.Pattern[str] | None:
+    candidate = collapse_spaces(str(candidate))
+    if not candidate:
+        return None
+    escaped = re.escape(candidate)
+    escaped = re.sub(r"(?:\\ |\\\t)+", r"\\s+", escaped)
+    return re.compile(rf"(?<![{WORD_CHAR_CLASS}]){escaped}(?![{WORD_CHAR_CLASS}])", flags=re.IGNORECASE)
+
+
+def is_short_candidate(candidate: str) -> bool:
+    compact = re.sub(r"[\s-]+", "", collapse_spaces(candidate))
+    return len(compact) < SHORT_CANDIDATE_MIN_LENGTH
 
 
 UNCERTAINTY_PATTERNS = [
@@ -464,7 +543,12 @@ def extract_evidence(normalized: dict[str, Any], analysis: dict[str, Any]) -> tu
     actions = []
     uncertainties = []
     contradictions = []
-    for segment in normalized.get("segments", []):
+    segments = normalized.get("segments", [])
+    excluded_segment_ids = excluded_ids_from_repetition_runs(segments, analysis.get("repetition_runs", []))
+    excluded_low_confidence = excluded_low_confidence_entries(analysis.get("repetition_runs", []))
+    for index, segment in enumerate(segments):
+        if segment.get("id") in excluded_segment_ids:
+            continue
         text = segment.get("text", "")
         ref = {"segment_id": segment.get("id"), "start": segment.get("start"), "end": segment.get("end")}
         if text:
@@ -473,7 +557,7 @@ def extract_evidence(normalized: dict[str, Any], analysis: dict[str, Any]) -> tu
             actions.append({"type": "action_mentioned_in_meeting", "text": text, "source": ref, "approved_task": False})
         if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in UNCERTAINTY_PATTERNS):
             uncertainties.append({"type": "linguistic_uncertainty", "text": text, "source": ref})
-        if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in CONTRADICTION_PATTERNS):
+        if is_contradiction_candidate(segments, index, normalized.get("glossary_configured", False), window=1):
             contradictions.append({
                 "topic": "meeting-discussion",
                 "status": "conflicting_meeting_evidence",
@@ -486,8 +570,16 @@ def extract_evidence(normalized: dict[str, Any], analysis: dict[str, Any]) -> tu
     uncertainty_doc = {
         "schema_version": 1,
         "low_confidence_ranges": analysis.get("low_confidence_ranges", []),
-        "uncertain_terms": normalized.get("glossary_candidates", []) + [
-            hit for hit in normalized.get("glossary_hits", []) if hit.get("match_type") == "observed_asr_variants"
+        "excluded_low_confidence": excluded_low_confidence,
+        "uncertain_terms": [
+            candidate for candidate in normalized.get("glossary_candidates", []) if candidate.get("segment_id") not in excluded_segment_ids
+        ] + [
+            hit for hit in normalized.get("glossary_hits", [])
+            if hit.get("segment_id") not in excluded_segment_ids
+            and (
+                hit.get("match_type") == "observed_asr_variants"
+                or hit.get("confidence") == "short_alias_review"
+            )
         ],
         "linguistic_uncertainties": uncertainties,
         "contradictions": contradictions,
@@ -501,11 +593,66 @@ def extract_evidence(normalized: dict[str, Any], analysis: dict[str, Any]) -> tu
     return evidence_doc, uncertainty_doc
 
 
+def is_contradiction_candidate(segments: list[dict[str, Any]], index: int, glossary_configured: bool, window: int = 1) -> bool:
+    text = str(segments[index].get("text", ""))
+    if not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in CONTRADICTION_PATTERNS):
+        return False
+    if not glossary_configured:
+        return True
+    start = max(0, index - window)
+    end = min(len(segments), index + window + 1)
+    for segment in segments[start:end]:
+        if segment.get("glossary_hits") or segment.get("glossary_candidates"):
+            return True
+    return False
+
+
+def excluded_ids_from_repetition_runs(segments: list[dict[str, Any]], runs: list[dict[str, Any]]) -> set[Any]:
+    excluded: set[Any] = set()
+    for run in runs:
+        start_index = find_segment_index(segments, run.get("start_segment_id"))
+        end_index = find_segment_index(segments, run.get("end_segment_id"))
+        if start_index is None or end_index is None:
+            continue
+        for segment in segments[start_index:end_index + 1]:
+            excluded.add(segment.get("id"))
+    return excluded
+
+
+def find_segment_index(segments: list[dict[str, Any]], segment_id: Any) -> int | None:
+    for index, segment in enumerate(segments):
+        if segment.get("id") == segment_id:
+            return index
+    return None
+
+
+def excluded_low_confidence_entries(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries = []
+    for run in runs:
+        entries.append({
+            "type": "asr_repetition_excluded",
+            "text": first_words(str(run.get("text", "")), EXCLUDED_TEXT_WORD_LIMIT),
+            "repeat_count": run.get("count"),
+            "source": {
+                "start_segment_id": run.get("start_segment_id"),
+                "end_segment_id": run.get("end_segment_id"),
+                "start": run.get("start"),
+                "end": run.get("end"),
+            },
+        })
+    return entries
+
+
+def first_words(text: str, limit: int) -> str:
+    words = collapse_spaces(text).split()
+    return " ".join(words[:limit])
+
+
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def build_manifest(source: SourceInfo, output_dir: Path, config: dict[str, Any], status: str, transcription_status: str) -> dict[str, Any]:
+def build_manifest(source: SourceInfo, output_dir: Path, config: dict[str, Any], status: str, transcription_status: str, analysis: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "status": status,
@@ -527,12 +674,19 @@ def build_manifest(source: SourceInfo, output_dir: Path, config: dict[str, Any],
             "configured": bool(config.get("glossary", {}).get("path")),
             "mode": config.get("glossary", {}).get("mode", "hints_only"),
         },
+        "quality": {
+            "asr_degeneration_suspected": bool(analysis.get("asr_degeneration_suspected", False)),
+            "repetition_run_count": len(analysis.get("repetition_runs", [])),
+            "segments_excluded": int(analysis.get("segments_excluded", 0) or 0),
+        },
         "output": {"path": str(output_dir)},
     }
 
 
 def write_meeting_md(path: Path, source: SourceInfo, manifest: dict[str, Any], analysis: dict[str, Any], evidence: dict[str, Any], uncertainties: dict[str, Any]) -> None:
+    quality_warning = quality_warning_md(analysis)
     content = f"""# {source.path.stem}
+{quality_warning}
 
 ## Metadata
 - Source: {source.path}
@@ -564,6 +718,30 @@ def write_meeting_md(path: Path, source: SourceInfo, manifest: dict[str, Any], a
     path.write_text(content, encoding="utf-8")
 
 
+def quality_warning_md(analysis: dict[str, Any]) -> str:
+    if not analysis.get("asr_degeneration_suspected"):
+        return ""
+    runs = analysis.get("repetition_runs", [])
+    if not runs:
+        return ""
+    total_segments = max(1, int(analysis.get("segment_count", 0) or 0))
+    excluded = int(analysis.get("segments_excluded", 0) or 0)
+    first = runs[0]
+    last = runs[-1]
+    total_duration = analysis.get("duration_seconds")
+    run_duration = sum((run.get("end") or 0) - (run.get("start") or 0) for run in runs)
+    if isinstance(total_duration, (int, float)) and total_duration > 0 and run_duration > 0:
+        percent = (run_duration / total_duration) * 100
+        percent_label = "recording"
+    else:
+        percent = (excluded / total_segments) * 100
+        percent_label = "segments"
+    return f"""
+## Quality Warning
+Suspected ASR degeneration: {excluded} segment(s) ({percent:.1f}% of {percent_label}) excluded as repeated/hallucinated block(s) from {first.get("start")} to {last.get("end")}. Treat this range as unreliable. See `uncertainties.json.excluded_low_confidence` for detail.
+"""
+
+
 def process_input(source_path: Path, source_kind: str, config: dict[str, Any], force: bool = False, dry_run: bool = False, reuse_raw: bool = False) -> dict[str, Any]:
     outputs_root = Path(str(config["outputs"]["root"])).expanduser()
     source = source_info(source_path, source_kind)
@@ -589,10 +767,18 @@ def process_input(source_path: Path, source_kind: str, config: dict[str, Any], f
             transcription_status = "reused_raw"
 
     raw = load_raw(raw_path)
-    analysis = analyze_transcript(raw)
+    quality_config = config.get("quality", {})
+    analysis = analyze_transcript(
+        raw,
+        repetition_min_run=int(quality_config.get("repetition_min_run", DEFAULT_REPETITION_MIN_RUN) or DEFAULT_REPETITION_MIN_RUN),
+        asr_degeneration_segment_ratio=float(
+            quality_config.get("asr_degeneration_segment_ratio", DEFAULT_ASR_DEGENERATION_SEGMENT_RATIO)
+            or DEFAULT_ASR_DEGENERATION_SEGMENT_RATIO
+        ),
+    )
     normalized = normalize_transcript(raw, str(config.get("glossary", {}).get("path") or ""))
     evidence, uncertainties = extract_evidence(normalized, analysis)
-    manifest = build_manifest(source, output_dir, config, "COMPLETE", transcription_status)
+    manifest = build_manifest(source, output_dir, config, "COMPLETE", transcription_status, analysis)
 
     write_json(output_dir / "transcription.analysis.json", analysis)
     write_json(output_dir / "transcription.normalized.json", normalized)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import stat
 import subprocess
@@ -13,6 +14,11 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_DIR / "scripts" / "process-meeting.py"
+SPEC = importlib.util.spec_from_file_location("process_meeting", SCRIPT)
+process_meeting = importlib.util.module_from_spec(SPEC)
+sys.modules[str(SPEC.name)] = process_meeting
+assert SPEC.loader is not None
+SPEC.loader.exec_module(process_meeting)
 
 
 class MeetingNormalizerCliTest(unittest.TestCase):
@@ -141,6 +147,22 @@ payload = {
             check=False,
         )
 
+    def write_raw(self, segments: list[dict]) -> Path:
+        raw = self.root / "raw.json"
+        raw.write_text(json.dumps({"text": " ".join(segment["text"] for segment in segments), "segments": segments}), encoding="utf-8")
+        return raw
+
+    def segment(self, index: int, text: str, compression_ratio: float = 1.1) -> dict:
+        return {
+            "id": index,
+            "start": float(index),
+            "end": float(index + 1),
+            "text": text,
+            "avg_logprob": -0.2,
+            "compression_ratio": compression_ratio,
+            "no_speech_prob": 0.1,
+        }
+
     def test_recording_generates_outputs_with_glossary_candidates(self) -> None:
         audio = self.root / "meeting.mp4"
         audio.write_bytes(b"fake")
@@ -249,6 +271,168 @@ terms:
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertTrue(Path(payload["output"]).exists())
+
+    def test_short_alias_does_not_match_fragment_inside_neutral_word(self) -> None:
+        terms = [{"canonical": "SampleConcept", "aliases": ["ray"], "confidence": "candidate"}]
+
+        hits = process_meeting.find_term_hits("The graybox workflow is ready.", terms)
+
+        self.assertEqual(hits, [])
+
+    def test_short_alias_matches_isolated_word_with_review_confidence(self) -> None:
+        terms = [{"canonical": "SampleConcept", "aliases": ["ray"], "confidence": "candidate"}]
+
+        hits = process_meeting.find_term_hits("Please review ray before release.", terms)
+
+        self.assertEqual(hits[0]["canonical"], "SampleConcept")
+        self.assertEqual(hits[0]["confidence"], "short_alias_review")
+        self.assertEqual(hits[0]["action"], "review_raw_before_normalizing")
+
+    def test_short_canonical_uses_word_boundary_and_review_confidence(self) -> None:
+        terms = [{"canonical": "QX", "aliases": [], "confidence": "candidate"}]
+
+        self.assertEqual(process_meeting.find_term_hits("The aqxbox task moved.", terms), [])
+        hits = process_meeting.find_term_hits("QX moved to review.", terms)
+        self.assertEqual(hits[0]["match_type"], "canonical")
+        self.assertEqual(hits[0]["confidence"], "short_alias_review")
+
+    def test_long_alias_still_matches_with_boundary_without_review_downgrade(self) -> None:
+        terms = [{"canonical": "SampleConcept", "aliases": ["sample alias"], "confidence": "candidate"}]
+
+        hits = process_meeting.find_term_hits("The sample alias, is ready.", terms)
+
+        self.assertEqual(hits[0]["matched"], "sample alias")
+        self.assertEqual(hits[0]["confidence"], "candidate")
+        self.assertNotIn("action", hits[0])
+
+    def test_contradiction_connector_without_glossary_anchor_does_not_fire(self) -> None:
+        normalized = {
+            "glossary_configured": True,
+            "segments": [{"id": 0, "start": 0.0, "end": 1.0, "text": "The team paused, but continued later.", "glossary_hits": [], "glossary_candidates": []}],
+            "glossary_hits": [],
+            "glossary_candidates": [],
+        }
+
+        _, uncertainties = process_meeting.extract_evidence(normalized, {"repetition_runs": []})
+
+        self.assertEqual(uncertainties["contradictions"], [])
+
+    def test_contradiction_connector_with_nearby_glossary_anchor_fires(self) -> None:
+        normalized = {
+            "glossary_configured": True,
+            "segments": [
+                {"id": 0, "start": 0.0, "end": 1.0, "text": "SampleProduct is ready.", "glossary_hits": [{"canonical": "SampleProduct"}], "glossary_candidates": []},
+                {"id": 1, "start": 1.0, "end": 2.0, "text": "But we should verify the rollout.", "glossary_hits": [], "glossary_candidates": []},
+            ],
+            "glossary_hits": [{"segment_id": 0, "canonical": "SampleProduct"}],
+            "glossary_candidates": [],
+        }
+
+        _, uncertainties = process_meeting.extract_evidence(normalized, {"repetition_runs": []})
+
+        self.assertEqual(len(uncertainties["contradictions"]), 1)
+
+    def test_repetition_run_of_five_segments_is_detected(self) -> None:
+        raw = {"segments": [self.segment(index, "We will review the sample item.", compression_ratio=2.8) for index in range(5)]}
+
+        analysis = process_meeting.analyze_transcript(raw)
+
+        self.assertEqual(len(analysis["repetition_runs"]), 1)
+        run = analysis["repetition_runs"][0]
+        self.assertEqual(run["start_segment_id"], 0)
+        self.assertEqual(run["end_segment_id"], 4)
+        self.assertEqual(run["count"], 5)
+        self.assertEqual(run["start"], 0.0)
+        self.assertEqual(run["end"], 5.0)
+
+    def test_repetition_run_below_minimum_is_not_detected(self) -> None:
+        raw = {"segments": [self.segment(index, "We will review the sample item.") for index in range(4)]}
+
+        analysis = process_meeting.analyze_transcript(raw)
+
+        self.assertEqual(analysis["repetition_runs"], [])
+        self.assertFalse(analysis["asr_degeneration_suspected"])
+
+    def test_asr_degeneration_suspected_uses_proportional_threshold(self) -> None:
+        high_ratio = {"segments": [self.segment(index, "Repeated sample phrase.") for index in range(5)] + [self.segment(5, "Unique sample phrase.")]}
+        low_ratio = {"segments": [self.segment(index, "Repeated sample phrase.") for index in range(5)] + [self.segment(index, f"Unique sample phrase {index}.") for index in range(5, 45)]}
+
+        self.assertTrue(process_meeting.analyze_transcript(high_ratio)["asr_degeneration_suspected"])
+        self.assertFalse(process_meeting.analyze_transcript(low_ratio)["asr_degeneration_suspected"])
+
+    def test_repetition_run_segments_are_excluded_from_evidence_and_summarized(self) -> None:
+        repeated = "We will review the sample item."
+        raw = {"segments": [self.segment(index, repeated) for index in range(5)] + [self.segment(5, "Maybe the sample item is ready.")]}
+        analysis = process_meeting.analyze_transcript(raw)
+        normalized = {
+            "glossary_configured": True,
+            "segments": [
+                {
+                    "id": segment["id"],
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "text": segment["text"],
+                    "glossary_hits": [{"canonical": "SampleItem"}],
+                    "glossary_candidates": [],
+                }
+                for segment in raw["segments"]
+            ],
+            "glossary_hits": [{"segment_id": index, "canonical": "SampleItem", "match_type": "observed_asr_variants"} for index in range(6)],
+            "glossary_candidates": [],
+        }
+
+        evidence, uncertainties = process_meeting.extract_evidence(normalized, analysis)
+
+        self.assertEqual(len(evidence["claims"]), 1)
+        self.assertEqual(evidence["claims"][0]["source"]["segment_id"], 5)
+        self.assertEqual(evidence["actions_mentioned"], [])
+        self.assertEqual(len(uncertainties["linguistic_uncertainties"]), 1)
+        self.assertEqual(uncertainties["contradictions"], [])
+        self.assertEqual(len(uncertainties["uncertain_terms"]), 1)
+        self.assertEqual(len(uncertainties["excluded_low_confidence"]), 1)
+        self.assertEqual(uncertainties["excluded_low_confidence"][0]["type"], "asr_repetition_excluded")
+        self.assertEqual(uncertainties["excluded_low_confidence"][0]["repeat_count"], 5)
+
+    def test_manifest_quality_reflects_repetition_fields(self) -> None:
+        raw = self.write_raw([self.segment(index, "We will review the sample item.") for index in range(5)] + [self.segment(5, "Unique sample item.")])
+
+        result = self.run_cli("--raw-transcript", str(raw), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        manifest = json.loads((out / "manifest.json").read_text())
+        self.assertEqual(manifest["quality"]["repetition_run_count"], 1)
+        self.assertEqual(manifest["quality"]["segments_excluded"], 5)
+        self.assertTrue(manifest["quality"]["asr_degeneration_suspected"])
+
+    def test_meeting_md_includes_quality_warning_only_when_degeneration_is_suspected(self) -> None:
+        raw = self.write_raw([self.segment(index, "We will review the sample item.") for index in range(5)] + [self.segment(5, "Unique sample item.")])
+
+        result = self.run_cli("--raw-transcript", str(raw), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        meeting = (out / "meeting.md").read_text()
+        self.assertIn("## Quality Warning", meeting)
+        self.assertLess(meeting.index("## Quality Warning"), meeting.index("## Metadata"))
+
+        raw2 = self.root / "raw-no-warning.json"
+        raw2.write_text(json.dumps({"segments": [self.segment(index, f"Unique sample item {index}.") for index in range(6)]}), encoding="utf-8")
+        result2 = self.run_cli("--raw-transcript", str(raw2), "--force")
+        self.assertEqual(result2.returncode, 0, result2.stderr)
+        out2 = Path(json.loads(result2.stdout)["output"])
+        self.assertNotIn("## Quality Warning", (out2 / "meeting.md").read_text())
+
+    def test_meeting_md_counts_reflect_post_exclusion_totals(self) -> None:
+        raw = self.write_raw([self.segment(index, "We will review the sample item.") for index in range(5)] + [self.segment(5, "We will review the final sample item.")])
+
+        result = self.run_cli("--raw-transcript", str(raw), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        meeting = (out / "meeting.md").read_text()
+        self.assertIn("- Claims extracted: 1", meeting)
+        self.assertIn("- Actions mentioned: 1", meeting)
 
 
 if __name__ == "__main__":
