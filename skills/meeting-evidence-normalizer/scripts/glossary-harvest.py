@@ -622,7 +622,7 @@ def match_glob(path: str, pattern: str) -> bool:
 def clean_term(value: str) -> str:
     value = re.sub(r"`([^`]+)`", r"\1", value)
     value = re.sub(r"\[[^\]]+\]\([^)]+\)", "", value)
-    value = re.sub(r"[^A-Za-z0-9_./:-]+", " ", value).strip()
+    value = re.sub(rf"[^{WORD_CHAR_CLASS}./:-]+", " ", value).strip()
     return humanize(value)
 
 

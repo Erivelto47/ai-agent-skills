@@ -63,6 +63,15 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         self.assertIn("SAMPLE READY", names)
         self.assertIn("Billing Workflow", names)
 
+    def test_markdown_heading_preserves_accented_display_text(self) -> None:
+        self.write("docs/overview.md", "# Pláçã Mévól Ánix\n")
+
+        self.run_cli("--profile", "generic")
+
+        names = {item["canonical"] for item in self.load_terms()}
+        self.assertIn("Pláçã Mévól Ánix", names)
+        self.assertNotIn("Pl M v l nix", names)
+
     def test_symlink_escape_outside_repo_is_excluded_without_crashing(self) -> None:
         self.write("src/status.txt", "INSIDE_SIGNAL\n")
         subprocess.run(["git", "init"], cwd=self.repo, text=True, capture_output=True, check=True)
