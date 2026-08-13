@@ -22,7 +22,11 @@ Each processed input writes one output directory:
 
 `transcription.raw.json` preserves the ASR output or supplied transcript exactly as received.
 
-`transcription.log` captures local transcriber progress/debug output so agent call logs stay quiet.
+When `transcription.chunking.enabled` is true, the final `transcription.raw.json` preserves the same public shape while merging per-chunk ASR results. Segment timestamps are shifted by each chunk's real start offset. Segments from later chunks whose start falls inside that chunk's overlap are dropped as the overlap dedupe policy; this avoids duplicate overlap evidence while preferring the earlier chunk's version.
+
+Chunked transcription writes intermediate chunk audio, per-chunk raw JSON, and per-chunk logs under `<output-name>.chunks/` inside the same output directory. This requires `ffmpeg`; when it is missing, processing fails with an actionable chunking error instead of silently falling back to whole-file transcription.
+
+`transcription.log` captures local transcriber progress/debug output so agent call logs stay quiet. In chunked mode, it stores a short summary and points to per-chunk logs in the chunk directory.
 
 `transcription.analysis.json` contains deterministic metrics from raw segments, including suspicious ranges when ASR metrics are available. It also contains:
 

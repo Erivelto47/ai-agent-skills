@@ -38,9 +38,14 @@ transcription:
   output_name: transcription.raw
   output_format: json
   cloud_fallback: false
+  chunking:
+    # Disabled by default. Enable for long recordings when the local ASR model
+    # is prone to long repeated-text loops. Requires ffmpeg.
+    enabled: false
+    chunk_seconds: 600
+    overlap_seconds: 15
 
 glossary:
   # Keep real glossary files private and outside this public repository.
   path: ""
   mode: hints_only
-

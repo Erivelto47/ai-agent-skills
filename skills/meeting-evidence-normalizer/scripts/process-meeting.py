@@ -31,6 +31,11 @@ DEFAULT_CONFIG = {
         "output_name": "transcription.raw",
         "output_format": "json",
         "cloud_fallback": False,
+        "chunking": {
+            "enabled": False,
+            "chunk_seconds": 600,
+            "overlap_seconds": 15,
+        },
     },
     "glossary": {
         "path": "",
@@ -86,38 +91,57 @@ def deep_copy(value: Any) -> Any:
 
 def load_simple_yaml(path: Path) -> dict[str, Any]:
     """Load the small config shape used by this skill without external dependencies."""
-    config = deep_copy(DEFAULT_CONFIG)
     if not path.exists():
-        return config
+        return deep_copy(DEFAULT_CONFIG)
 
-    current_section: str | None = None
-    current_key: str | None = None
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0].rstrip()
-        if not line.strip():
-            continue
-        if not line.startswith(" ") and line.endswith(":"):
-            current_section = line[:-1].strip()
-            config.setdefault(current_section, {})
-            current_key = None
-            continue
-        if current_section is None:
-            continue
+    parsed: dict[str, Any] = {}
+    cleaned_lines = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if line.strip():
+            cleaned_lines.append(line)
+    stack: list[tuple[int, Any]] = [(-1, parsed)]
+    for index, line in enumerate(cleaned_lines):
+        indent = len(line) - len(line.lstrip(" "))
         stripped = line.strip()
-        if stripped.startswith("- ") and current_key:
-            config[current_section].setdefault(current_key, []).append(coerce_scalar(stripped[2:]))
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        parent = stack[-1][1]
+        if stripped.startswith("- "):
+            if not isinstance(parent, list):
+                continue
+            parent.append(coerce_scalar(stripped[2:]))
             continue
-        if ":" in stripped:
-            key, value = stripped.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            current_key = key
-            if value == "":
-                config[current_section][key] = []
-            else:
-                config[current_section][key] = coerce_scalar(value)
-                current_key = key if isinstance(config[current_section][key], list) else None
-    return config
+        if not isinstance(parent, dict) or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if value:
+            parent[key] = coerce_scalar(value)
+            continue
+        child = [] if next_content_is_list(cleaned_lines, index, indent) else {}
+        parent[key] = child
+        stack.append((indent, child))
+    return deep_merge(deep_copy(DEFAULT_CONFIG), parsed)
+
+
+def next_content_is_list(lines: list[str], index: int, indent: int) -> bool:
+    for line in lines[index + 1:]:
+        next_indent = len(line) - len(line.lstrip(" "))
+        if next_indent <= indent:
+            return False
+        return line.strip().startswith("- ")
+    return False
+
+
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 
 def discover_config_path(start: Path) -> Path:
@@ -144,6 +168,10 @@ def coerce_scalar(value: str) -> Any:
         return False
     if value.lower() in {"null", "none"}:
         return None
+    if re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if re.fullmatch(r"-?\d+\.\d+", value):
+        return float(value)
     return value.strip("'\"")
 
 
@@ -206,6 +234,7 @@ def preflight(config: dict[str, Any], require_transcriber: bool = False) -> dict
     tools = {
         "python3": shutil.which("python3"),
         "transcriber_executable": shutil.which(str(executable)) if executable else None,
+        "ffmpeg": shutil.which("ffmpeg") if chunking_enabled(config) else None,
     }
     result = {
         "checked_at": now_iso(),
@@ -217,6 +246,9 @@ def preflight(config: dict[str, Any], require_transcriber: bool = False) -> dict
         raise BlockedTranscriberNotAvailable(json.dumps(result, indent=2))
     if require_transcriber and executable and not tools["transcriber_executable"]:
         result["status"] = "BLOCKED_TRANSCRIBER_NOT_AVAILABLE"
+        raise BlockedTranscriberNotAvailable(json.dumps(result, indent=2))
+    if require_transcriber and chunking_enabled(config) and not tools["ffmpeg"]:
+        result["status"] = "BLOCKED_CHUNKING_FFMPEG_NOT_AVAILABLE"
         raise BlockedTranscriberNotAvailable(json.dumps(result, indent=2))
     return result
 
@@ -230,7 +262,23 @@ def render_command(command: list[Any], audio: Path, output_dir: Path, output_nam
     return [str(part).format(**values) for part in command]
 
 
+def chunking_config(config: dict[str, Any]) -> dict[str, Any]:
+    transcription = config.get("transcription", {})
+    value = transcription.get("chunking") if isinstance(transcription, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def chunking_enabled(config: dict[str, Any]) -> bool:
+    return bool(chunking_config(config).get("enabled", False))
+
+
 def run_transcriber(audio: Path, output_dir: Path, config: dict[str, Any]) -> Path:
+    if chunking_enabled(config):
+        return run_chunked_transcriber(audio, output_dir, config)
+    return run_single_transcriber(audio, output_dir, config)
+
+
+def run_single_transcriber(audio: Path, output_dir: Path, config: dict[str, Any]) -> Path:
     transcriber = config["transcription"]
     output_name = str(transcriber.get("output_name") or "transcription.raw")
     cmd = render_command(transcriber.get("command") or [], audio, output_dir, output_name)
@@ -247,6 +295,190 @@ def run_transcriber(audio: Path, output_dir: Path, config: dict[str, Any]) -> Pa
     if not raw_path.exists():
         raise MeetingNormalizerError("BLOCKED_TRANSCRIPTION: raw json was not produced")
     return raw_path
+
+
+def run_chunked_transcriber(audio: Path, output_dir: Path, config: dict[str, Any]) -> Path:
+    if not shutil.which("ffmpeg"):
+        raise MeetingNormalizerError("BLOCKED_CHUNKING_FFMPEG_NOT_AVAILABLE: install ffmpeg or set transcription.chunking.enabled: false")
+    transcriber = config["transcription"]
+    if not transcriber.get("command"):
+        raise BlockedTranscriberNotAvailable("BLOCKED_TRANSCRIBER_NOT_CONFIGURED")
+    chunk_config = chunking_config(config)
+    chunk_seconds = float(chunk_config.get("chunk_seconds", 600) or 600)
+    overlap_seconds = float(chunk_config.get("overlap_seconds", 15) or 0)
+    if chunk_seconds <= 0:
+        raise MeetingNormalizerError("INVALID_CHUNKING_CONFIG: chunk_seconds must be greater than zero")
+    if overlap_seconds < 0 or overlap_seconds >= chunk_seconds:
+        raise MeetingNormalizerError("INVALID_CHUNKING_CONFIG: overlap_seconds must be >= 0 and smaller than chunk_seconds")
+
+    output_name = str(transcriber.get("output_name") or "transcription.raw")
+    chunks_root = output_dir / f"{output_name}.chunks"
+    if chunks_root.exists():
+        shutil.rmtree(chunks_root)
+    chunks_root.mkdir(parents=True)
+    summary_log_path = output_dir / "transcription.log"
+
+    chunks = create_audio_chunks(audio, chunks_root, chunk_seconds, overlap_seconds)
+    if not chunks:
+        raise MeetingNormalizerError("BLOCKED_CHUNKING: no chunks were produced")
+    all_segments: list[dict[str, Any]] = []
+    chunk_payloads = []
+    for chunk in chunks:
+        chunk_dir = chunks_root / f"chunk-{chunk['index']:04d}-out"
+        chunk_dir.mkdir()
+        chunk_output_name = f"{output_name}.chunk-{chunk['index']:04d}"
+        cmd = render_command(transcriber.get("command") or [], chunk["path"], chunk_dir, chunk_output_name)
+        chunk_log_path = chunks_root / f"chunk-{chunk['index']:04d}.log"
+        with chunk_log_path.open("w", encoding="utf-8") as log:
+            subprocess.run(cmd, check=True, stdout=log, stderr=subprocess.STDOUT)
+        chunk_raw_path = chunk_dir / f"{chunk_output_name}.json"
+        if not chunk_raw_path.exists():
+            candidates = sorted(chunk_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if candidates:
+                candidates[0].replace(chunk_raw_path)
+        if not chunk_raw_path.exists():
+            raise MeetingNormalizerError(f"BLOCKED_TRANSCRIPTION: chunk {chunk['index']} raw json was not produced")
+        chunk_raw = load_raw(chunk_raw_path)
+        adjusted = adjust_chunk_segments(raw_segments(chunk_raw), chunk["start"], chunk["end"], chunk["overlap_start"])
+        chunk_payloads.append({"chunk": chunk, "raw": chunk_raw})
+        all_segments.extend(adjusted)
+
+    summary_log_path.write_text(
+        "\n".join(
+            [
+                "chunked transcription complete",
+                f"chunk_count={len(chunks)}",
+                f"chunk_seconds={chunk_seconds}",
+                f"overlap_seconds={overlap_seconds}",
+                f"chunk_logs={chunks_root}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    merged_segments = dedupe_overlap_segments(all_segments)
+    for index, segment in enumerate(merged_segments):
+        segment["id"] = index
+    raw = {
+        "text": " ".join(segment.get("text", "") for segment in merged_segments if segment.get("text")),
+        "segments": merged_segments,
+        "chunking": {
+            "enabled": True,
+            "chunk_seconds": chunk_seconds,
+            "overlap_seconds": overlap_seconds,
+            "chunk_count": len(chunks),
+            "dedupe_policy": "drop segments from later chunks that start before the non-overlap start of that chunk",
+        },
+    }
+    raw_path = output_dir / f"{output_name}.json"
+    write_json(raw_path, raw)
+    return raw_path
+
+
+def create_audio_chunks(audio: Path, chunks_root: Path, chunk_seconds: float, overlap_seconds: float) -> list[dict[str, Any]]:
+    duration = probe_duration(audio)
+    if duration <= 0:
+        raise MeetingNormalizerError("BLOCKED_CHUNKING: could not determine audio duration")
+    step = chunk_seconds - overlap_seconds
+    chunks = []
+    start = 0.0
+    index = 0
+    while start < duration:
+        end = min(duration, start + chunk_seconds)
+        chunk_path = chunks_root / f"chunk-{index:04d}.wav"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            format_seconds(start),
+            "-i",
+            str(audio),
+            "-t",
+            format_seconds(end - start),
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            str(chunk_path),
+        ]
+        subprocess.run(cmd, check=True)
+        chunks.append({
+            "index": index,
+            "path": chunk_path,
+            "start": start,
+            "end": end,
+            "overlap_start": start if index == 0 else start + overlap_seconds,
+        })
+        if end >= duration:
+            break
+        start += step
+        index += 1
+    return chunks
+
+
+def probe_duration(audio: Path) -> float:
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return float(result.stdout.strip())
+    result = subprocess.run(
+        ["ffmpeg", "-i", str(audio), "-f", "null", "-"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def format_seconds(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".")
+
+
+def adjust_chunk_segments(segments: list[dict[str, Any]], chunk_start: float, chunk_end: float, overlap_start: float) -> list[dict[str, Any]]:
+    adjusted = []
+    for segment in segments:
+        start = segment.get("start")
+        end = segment.get("end")
+        abs_start = chunk_start + float(start) if isinstance(start, (int, float)) else None
+        abs_end = chunk_start + float(end) if isinstance(end, (int, float)) else None
+        if abs_start is not None and abs_start < overlap_start:
+            continue
+        if abs_start is not None:
+            segment["start"] = round(abs_start, 3)
+        if abs_end is not None:
+            segment["end"] = round(min(abs_end, chunk_end), 3)
+        segment["chunk_start"] = chunk_start
+        segment["chunk_end"] = chunk_end
+        adjusted.append(segment)
+    return adjusted
+
+
+def dedupe_overlap_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped = []
+    seen: set[tuple[Any, Any, str]] = set()
+    for segment in sorted(segments, key=lambda item: (item.get("start") if item.get("start") is not None else -1, item.get("end") if item.get("end") is not None else -1)):
+        key = (segment.get("start"), segment.get("end"), normalize_repetition_text(str(segment.get("text", ""))))
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned = {key: value for key, value in segment.items() if key not in {"chunk_start", "chunk_end"}}
+        deduped.append(cleaned)
+    return deduped
 
 
 def load_raw(raw_path: Path) -> dict[str, Any]:

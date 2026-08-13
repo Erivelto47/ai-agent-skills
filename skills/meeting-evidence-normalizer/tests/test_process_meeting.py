@@ -4,12 +4,16 @@ from __future__ import annotations
 import json
 import importlib.util
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+
+FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
 
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
@@ -133,6 +137,36 @@ payload = {
         )
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
 
+    def create_chunk_fake_transcriber(self) -> Path:
+        fake = self.fake_bin / "fake_chunk_transcriber"
+        calls = self.root / "chunk-calls.jsonl"
+        fake.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import re
+import sys
+from pathlib import Path
+
+_, audio, output_dir, output_name = sys.argv
+out = Path(output_dir)
+out.mkdir(parents=True, exist_ok=True)
+match = re.search(r"chunk-(\\d{{4}})", str(audio))
+index = int(match.group(1)) if match else 0
+Path({str(calls)!r}).open("a", encoding="utf-8").write(json.dumps({{"index": index, "audio": audio, "output_dir": output_dir, "output_name": output_name}}) + "\\n")
+payload = {{
+  "text": f"chunk {{index}} first chunk {{index}} overlap",
+  "segments": [
+    {{"id": 0, "start": 0.0, "end": 1.0, "text": f"chunk {{index}} first", "avg_logprob": -0.2, "compression_ratio": 1.1, "no_speech_prob": 0.1}},
+    {{"id": 1, "start": 2.0, "end": 3.0, "text": f"chunk {{index}} overlap", "avg_logprob": -0.2, "compression_ratio": 1.1, "no_speech_prob": 0.1}}
+  ]
+}}
+(out / f"{{output_name}}.json").write_text(json.dumps(payload), encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
+        fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+        return calls
+
     def env(self) -> dict[str, str]:
         env = os.environ.copy()
         env["PATH"] = str(self.fake_bin) + os.pathsep + env.get("PATH", "")
@@ -163,6 +197,29 @@ payload = {
             "no_speech_prob": 0.1,
         }
 
+    def write_test_audio(self, seconds: float = 12.0) -> Path:
+        audio = self.root / "tone.wav"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"sine=frequency=440:duration={seconds}",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                str(audio),
+            ],
+            check=True,
+        )
+        return audio
+
     def test_recording_generates_outputs_with_glossary_candidates(self) -> None:
         audio = self.root / "meeting.mp4"
         audio.write_bytes(b"fake")
@@ -186,6 +243,132 @@ payload = {
         self.assertTrue(uncertainties["uncertain_terms"])
         self.assertTrue(uncertainties["linguistic_uncertainties"])
         self.assertTrue(uncertainties["contradictions"])
+
+    def test_chunking_disabled_uses_single_transcriber_without_chunks(self) -> None:
+        audio = self.root / "meeting.mp4"
+        audio.write_bytes(b"fake")
+
+        result = self.run_cli(str(audio), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        self.assertFalse((out / "transcription.raw.chunks").exists())
+        self.assertIn("FAKE_PROGRESS_SHOULD_BE_CAPTURED", (out / "transcription.log").read_text())
+
+    @unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg not installed")
+    def test_chunking_splits_audio_calls_transcriber_and_reassembles_offsets(self) -> None:
+        calls = self.create_chunk_fake_transcriber()
+        audio = self.write_test_audio(seconds=12.0)
+        self.config.write_text(
+            f"""outputs:
+  root: {self.outputs}
+transcription:
+  provider: custom_command
+  command:
+    - fake_chunk_transcriber
+    - "{{audio}}"
+    - "{{output_dir}}"
+    - "{{output_name}}"
+  output_name: transcription.raw
+  chunking:
+    enabled: true
+    chunk_seconds: 5
+    overlap_seconds: 1
+glossary:
+  path: {self.glossary}
+  mode: hints_only
+""",
+            encoding="utf-8",
+        )
+
+        result = self.run_cli(str(audio), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        call_lines = [json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([line["index"] for line in call_lines], [0, 1, 2])
+        raw = json.loads((out / "transcription.raw.json").read_text())
+        self.assertTrue(raw["chunking"]["enabled"])
+        self.assertEqual(raw["chunking"]["chunk_count"], 3)
+        self.assertEqual([segment["start"] for segment in raw["segments"]], [0.0, 2.0, 6.0, 10.0])
+        self.assertEqual([segment["id"] for segment in raw["segments"]], [0, 1, 2, 3])
+        self.assertTrue((out / "transcription.raw.chunks" / "chunk-0000.wav").exists())
+        self.assertTrue((out / "transcription.raw.chunks" / "chunk-0000.log").exists())
+
+    @unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg not installed")
+    def test_chunking_final_raw_shape_remains_consumable(self) -> None:
+        self.create_chunk_fake_transcriber()
+        audio = self.write_test_audio(seconds=7.0)
+        self.config.write_text(
+            f"""outputs:
+  root: {self.outputs}
+transcription:
+  provider: custom_command
+  command:
+    - fake_chunk_transcriber
+    - "{{audio}}"
+    - "{{output_dir}}"
+    - "{{output_name}}"
+  output_name: transcription.raw
+  chunking:
+    enabled: true
+    chunk_seconds: 5
+    overlap_seconds: 1
+glossary:
+  path: {self.glossary}
+  mode: hints_only
+""",
+            encoding="utf-8",
+        )
+
+        result = self.run_cli(str(audio), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = Path(json.loads(result.stdout)["output"])
+        raw = json.loads((out / "transcription.raw.json").read_text())
+        analysis = json.loads((out / "transcription.analysis.json").read_text())
+        normalized = json.loads((out / "transcription.normalized.json").read_text())
+        self.assertTrue(all({"id", "start", "end", "text"} <= set(segment) for segment in raw["segments"]))
+        self.assertEqual(analysis["segment_count"], len(raw["segments"]))
+        self.assertEqual(len(normalized["segments"]), len(raw["segments"]))
+
+    @unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg not installed")
+    def test_chunking_enabled_without_ffmpeg_fails_actionably(self) -> None:
+        audio = self.write_test_audio(seconds=2.0)
+        self.config.write_text(
+            f"""outputs:
+  root: {self.outputs}
+transcription:
+  provider: custom_command
+  command:
+    - fake_transcriber
+    - "{{audio}}"
+    - "{{output_dir}}"
+    - "{{output_name}}"
+  output_name: transcription.raw
+  chunking:
+    enabled: true
+    chunk_seconds: 5
+    overlap_seconds: 1
+glossary:
+  path: {self.glossary}
+  mode: hints_only
+""",
+            encoding="utf-8",
+        )
+        env = self.env()
+        env["PATH"] = str(self.fake_bin)
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), str(audio), "--config", str(self.config), "--force"],
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("BLOCKED_CHUNKING_FFMPEG_NOT_AVAILABLE", result.stderr)
 
     def test_raw_transcript_does_not_require_transcriber(self) -> None:
         raw = self.root / "raw.json"

@@ -50,6 +50,7 @@ Important config fields:
 - `outputs.root`: directory where runtime artifacts are written.
 - `transcription.command`: optional command template for local transcription.
 - `transcription.output_format`: expected raw transcript format, currently Whisper-style JSON or simple segment JSON.
+- `transcription.chunking.enabled`: optional long-audio mitigation. When true, the script requires `ffmpeg`, splits audio into overlapping chunks, runs the configured transcriber once per chunk, adjusts timestamps, and writes one merged `transcription.raw.json`.
 - `glossary.path`: optional private glossary path.
 - `glossary.mode`: use `hints_only` unless the user explicitly wants stricter behavior.
 
@@ -87,6 +88,7 @@ Use `scripts/glossary-harvest` when a user wants to bootstrap or refresh a priva
 ## Safety Rules
 
 - Keep processing local unless the user explicitly authorizes a cloud service.
+- If `transcription.chunking.enabled` is true, require `ffmpeg` and fail clearly when it is missing.
 - Do not upload audio, transcripts, or glossary content by default.
 - Do not copy meeting audio into Git.
 - Do not version runtime outputs.

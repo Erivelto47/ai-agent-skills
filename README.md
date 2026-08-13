@@ -66,3 +66,8 @@ python3 -m py_compile skills/meeting-evidence-normalizer/scripts/*.py
 python3 -m unittest discover -s skills/meeting-evidence-normalizer/tests -v
 python3 scripts/validate_skill.py skills/meeting-evidence-normalizer
 ```
+
+`ffmpeg` is required to use `transcription.chunking.enabled: true` (see
+`skills/meeting-evidence-normalizer/SKILL.md`) and to run the chunking test cases in
+`test_process_meeting.py`. Those tests skip automatically when `ffmpeg` is not on `PATH`;
+everything else in the suite runs without it.
