@@ -6,6 +6,8 @@ cuidado
 dado
 decisao
 dependencias
+depois
+deve
 erro
 escopo
 exemplo
@@ -22,11 +24,13 @@ problema
 regras
 resposta
 resultado
+sempre
 solicitacao
 solucao
 status
 testes
 tipo
+todo
 usuario
 valor
 vantagens
