@@ -225,6 +225,31 @@ terms:
         payload = json.loads(result.stdout)
         self.assertTrue(Path(payload["output"]).exists())
 
+    def test_discovers_user_config_when_project_config_is_absent(self) -> None:
+        home = self.root / "home"
+        home_config_dir = home / ".config" / "meeting-evidence-normalizer"
+        home_config_dir.mkdir(parents=True)
+        (home_config_dir / "profile.yaml").write_text(self.config.read_text(encoding="utf-8"), encoding="utf-8")
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        raw = workspace / "raw.json"
+        raw.write_text(json.dumps({"text": "The customer plan belongs to this market.", "segments": []}), encoding="utf-8")
+        env = self.env()
+        env["HOME"] = str(home)
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--raw-transcript", str(raw)],
+            text=True,
+            capture_output=True,
+            cwd=workspace,
+            env=env,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(Path(payload["output"]).exists())
+
 
 if __name__ == "__main__":
     unittest.main()

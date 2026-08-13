@@ -50,6 +50,13 @@ For project-local use, place the private config at one of these paths in your pr
 .agents/meeting-evidence-normalizer/profile.yaml
 ```
 
+For user-level use across projects, place or symlink the private config at:
+
+```text
+~/.config/meeting-evidence-normalizer/profile.yaml
+~/.meeting-evidence-normalizer.yaml
+```
+
 ## Validate
 
 Run the repository checks:

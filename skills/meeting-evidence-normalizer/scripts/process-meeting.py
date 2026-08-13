@@ -47,6 +47,10 @@ PROJECT_CONFIG_CANDIDATES = (
     ".meeting-evidence-normalizer/config.yaml",
     ".agents/meeting-evidence-normalizer/profile.yaml",
 )
+USER_CONFIG_CANDIDATES = (
+    Path.home() / ".config" / "meeting-evidence-normalizer" / "profile.yaml",
+    Path.home() / ".meeting-evidence-normalizer.yaml",
+)
 
 
 class MeetingNormalizerError(Exception):
@@ -116,6 +120,9 @@ def discover_config_path(start: Path) -> Path:
             path = directory / candidate
             if path.exists():
                 return path
+    for path in USER_CONFIG_CANDIDATES:
+        if path.exists():
+            return path
     return DEFAULT_CONFIG_PATH
 
 
