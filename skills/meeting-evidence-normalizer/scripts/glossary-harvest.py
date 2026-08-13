@@ -288,6 +288,7 @@ def harvest(repo: Path, profile: Profile, detection: dict[str, Any], transcripts
         "generated_at": generated_at,
         "profile": profile.name,
         "repo_fingerprint": repo_fingerprint(repo),
+        "spokenness_active": spoken_index is not None,
         "tool": {"name": "glossary-harvest", "version": TOOL_VERSION},
         "terms": scored,
     }

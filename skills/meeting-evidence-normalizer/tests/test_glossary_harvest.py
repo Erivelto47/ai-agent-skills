@@ -47,6 +47,9 @@ class GlossaryHarvestCliTest(unittest.TestCase):
     def load_terms(self) -> list[dict]:
         return yaml.safe_load(self.out.read_text(encoding="utf-8"))["terms"]
 
+    def load_payload(self) -> dict:
+        return yaml.safe_load(self.out.read_text(encoding="utf-8"))
+
     def term(self, canonical: str) -> dict:
         for item in self.load_terms():
             if item["canonical"] == canonical:
@@ -220,6 +223,23 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         self.run_cli("--profile", "generic")
 
         self.assertEqual(self.term("SILENT SIGNAL")["harvest"]["breakdown"]["spokenness"], 1.0)
+
+    def test_spokenness_active_header_is_true_with_transcripts(self) -> None:
+        self.write("src/status.txt", "SAMPLE_BRIDGE\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(json.dumps({"text": "sample bridge"}), encoding="utf-8")
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertIs(self.load_payload()["spokenness_active"], True)
+
+    def test_spokenness_active_header_is_false_without_transcripts(self) -> None:
+        self.write("src/status.txt", "SILENT_SIGNAL\n")
+
+        self.run_cli("--profile", "generic")
+
+        self.assertIs(self.load_payload()["spokenness_active"], False)
 
     def test_unknown_profile_keys_fail_with_actionable_error(self) -> None:
         profile = self.root / "bad-profile.yaml"

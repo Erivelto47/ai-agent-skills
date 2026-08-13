@@ -26,7 +26,16 @@ Harvest glossary candidates from a repository before a human or higher-level age
 skills/meeting-evidence-normalizer/scripts/glossary-harvest --repo "/absolute/path/to/repo"
 ```
 
-The harvest output is candidate-only. Do not merge it into a private glossary without review.
+Cross-check multiple transcript-scored harvest outputs before a human reviews the confirmed batch:
+
+```bash
+skills/meeting-evidence-normalizer/scripts/glossary-confirm \
+  --candidates "/path/to/source-a/candidates.yaml" "/path/to/source-b/candidates.yaml" \
+  --out "/path/to/glossary-confirmed.yaml" \
+  --report "/path/to/glossary-confirm-report.md"
+```
+
+The harvest output is candidate-only. The confirm output is a triage shortcut for strong cross-source evidence; do not merge either artifact into a private glossary without review.
 
 ## Workflow
 
@@ -84,6 +93,8 @@ Use `scripts/glossary-harvest` when a user wants to bootstrap or refresh a priva
 - Treat every harvested term as `confidence: candidate`.
 - Keep real repository validation outputs outside Git.
 - Use `--transcripts <dir>` only when processed meeting outputs are available and the user authorizes using them for local spokenness scoring.
+- Use `scripts/glossary-confirm` only after each input `candidates.yaml` was generated with `--transcripts`; it requires `spokenness_active: true`.
+- Treat `confidence: cross_source_confirmed` as a review batch, not as permission to write directly to `domain-glossary.yaml`.
 
 ## Safety Rules
 

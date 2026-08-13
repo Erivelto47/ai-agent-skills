@@ -4,6 +4,14 @@ Use `scripts/glossary-harvest` to produce an anchored candidate list before enri
 
 The harvester is intentionally deterministic and offline. It does not call an LLM, does not use the network, and does not promote candidates above `confidence: candidate`.
 
+For multiple repositories or evidence sources, the intended flow is:
+
+```text
+glossary-harvest per source -> glossary-confirm across generated candidates -> human review of confirmed batch -> slower manual review of remaining candidates
+```
+
+`glossary-confirm` is only a triage shortcut for terms with strong structural evidence and real speech confirmation. It does not replace the Agent Discovery Procedure in `glossary-guide.md` for terms that do not cross the confirmation threshold.
+
 ## Basic Usage
 
 ```bash
@@ -21,6 +29,35 @@ skills/meeting-evidence-normalizer/scripts/glossary-harvest \
 ```
 
 Use `--transcripts /path/to/processed-meeting-outputs` to enable local spokenness scoring. This reads `transcription.raw.json` files and loosely compares spoken forms against harvested terms.
+
+When transcripts are provided, `glossary-candidates.yaml` includes `spokenness_active: true`. Without transcripts it includes `spokenness_active: false`; such files are intentionally rejected by `glossary-confirm` because neutral spokenness scores are not evidence that people used the term in speech.
+
+## Cross-Source Confirmation
+
+Run `glossary-confirm` against already generated candidate files. It never reruns harvest and never writes to `domain-glossary.yaml`.
+
+```bash
+skills/meeting-evidence-normalizer/scripts/glossary-confirm \
+  --candidates /tmp/source-a/candidates.yaml /tmp/source-b/candidates.yaml /tmp/source-c/candidates.yaml \
+  --out /tmp/glossary-confirmed.yaml \
+  --report /tmp/glossary-confirm-report.md
+```
+
+The default rule is:
+
+```text
+cross_source_confirmed =
+    (source_repo_count >= 2 OR total_file_count_across_sources >= 4)
+    AND max_spokenness_across_sources == 1.0
+```
+
+`source_repo_count` is the number of distinct `candidates.yaml` files containing the normalized term. `total_file_count_across_sources` is the sum of each term's `harvest.file_count`. `max_spokenness_across_sources` is the maximum `harvest.breakdown.spokenness` across those files.
+
+The `2` and `4` thresholds can be changed with `--source-threshold` and `--file-count-threshold`, but the exact `max_spokenness == 1.0` gate is deliberate. Textual presence alone is not enough for automatic confirmation.
+
+Confirmed output uses the glossary shape where the script has evidence: `canonical`, `category`, merged `aliases`, merged `observed_asr_variants` when present in the inputs, all source entries with their candidate-file provenance, and `confidence: cross_source_confirmed`. It deliberately omits enrichment fields such as `possible_contexts` and `ambiguity_note`.
+
+The report explains why each confirmed term crossed the threshold and lists near misses for manual review. Terms that do not cross the threshold remain unchanged in their original `candidates.yaml` files.
 
 ## Output
 
@@ -43,6 +80,8 @@ distinctiveness x spokenness x extractor_weight x (1 - commonness_penalty)
 `spokenness` is `1.0` when no transcript root is provided. When transcripts are provided, spoken terms score higher than equally distinctive terms that never appear in meeting speech.
 
 `commonness_penalty` reduces isolated ordinary words and short terms. Multi-word and compound terms are not penalized by the dictionary lists.
+
+The cross-source confirmation commonness gate reduces but does not eliminate generic multi-word noise, because dictionary commonness only applies to one-word terms; treat `cross_source_confirmed` as a fast human-review batch before updating `domain-glossary.yaml`, not as final truth.
 
 `extractor_weight` comes from the selected profile.
 
