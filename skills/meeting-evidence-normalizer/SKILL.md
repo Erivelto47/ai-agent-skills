@@ -14,6 +14,7 @@ skills/meeting-evidence-normalizer/scripts/meeting-normalizer "/absolute/path/to
 skills/meeting-evidence-normalizer/scripts/meeting-normalizer --raw-transcript "/absolute/path/to/transcription.raw.json" --config "/absolute/path/to/profile.yaml"
 ```
 
+If `--config` is omitted, the script searches upward from the current directory for `.meeting-evidence-normalizer.yaml`, `.meeting-evidence-normalizer/config.yaml`, or `.agents/meeting-evidence-normalizer/profile.yaml`.
 If no config exists, ask the user where meeting outputs should be written, whether a transcriber command is available, and whether a private glossary should be used.
 
 Use `--dry-run` before processing real audio. Use `--preflight` to verify local tools and configuration.
@@ -21,7 +22,7 @@ Use `--force --reuse-raw` when `transcription.raw.json` already exists and only 
 
 ## Workflow
 
-1. Load config from `--config`, then environment variables, then safe defaults.
+1. Load config from `--config`, then project-local config discovery, then safe defaults.
 2. Resolve the input as either an audio/video file or `--raw-transcript`.
 3. Compute source metadata and create a deterministic output directory.
 4. Skip already processed inputs when a complete manifest exists, unless `--force` is requested.
@@ -82,4 +83,3 @@ Read only what the task needs:
 - `references/glossary-guide.md` for how to build a private glossary.
 - `references/glossary.schema.yaml` for glossary fields.
 - `references/glossary.example.yaml` for neutral examples.
-

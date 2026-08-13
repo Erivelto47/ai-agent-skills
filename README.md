@@ -42,6 +42,13 @@ cp skills/meeting-evidence-normalizer/config/profile.example.yaml ~/meeting-norm
 ```
 
 Then edit the private file with your local transcript command, output paths, and private glossary path.
+For project-local use, place the private config at one of these paths in your project:
+
+```text
+.meeting-evidence-normalizer.yaml
+.meeting-evidence-normalizer/config.yaml
+.agents/meeting-evidence-normalizer/profile.yaml
+```
 
 ## Validate
 
@@ -52,4 +59,3 @@ python3 -m py_compile skills/meeting-evidence-normalizer/scripts/*.py
 python3 -m unittest discover -s skills/meeting-evidence-normalizer/tests -v
 python3 scripts/validate_skill.py skills/meeting-evidence-normalizer
 ```
-

@@ -42,6 +42,11 @@ DEFAULT_CONFIG = {
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG_PATH = SKILL_DIR / "config" / "profile.example.yaml"
+PROJECT_CONFIG_CANDIDATES = (
+    ".meeting-evidence-normalizer.yaml",
+    ".meeting-evidence-normalizer/config.yaml",
+    ".agents/meeting-evidence-normalizer/profile.yaml",
+)
 
 
 class MeetingNormalizerError(Exception):
@@ -100,6 +105,18 @@ def load_simple_yaml(path: Path) -> dict[str, Any]:
                 config[current_section][key] = coerce_scalar(value)
                 current_key = key if isinstance(config[current_section][key], list) else None
     return config
+
+
+def discover_config_path(start: Path) -> Path:
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+    for directory in (current, *current.parents):
+        for candidate in PROJECT_CONFIG_CANDIDATES:
+            path = directory / candidate
+            if path.exists():
+                return path
+    return DEFAULT_CONFIG_PATH
 
 
 def coerce_scalar(value: str) -> Any:
@@ -604,7 +621,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Normalize local meeting recordings or raw transcript JSON into traceable evidence.")
     parser.add_argument("recording", nargs="?", help="Audio/video file path. Omit to scan recordings.root.")
     parser.add_argument("--raw-transcript", help="Existing transcript JSON to process without transcription")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to profile YAML")
+    parser.add_argument("--config", help="Path to profile YAML. If omitted, search for a project-local profile before using the bundled example")
     parser.add_argument("--recordings-root", help="Override recordings.root")
     parser.add_argument("--output-root", help="Override outputs.root")
     parser.add_argument("--glossary", help="Override glossary.path")
@@ -617,7 +634,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    config = load_simple_yaml(Path(args.config).expanduser())
+    config_path = Path(args.config).expanduser() if args.config else discover_config_path(Path.cwd())
+    config = load_simple_yaml(config_path)
     if args.recordings_root:
         config.setdefault("recordings", {})["root"] = args.recordings_root
     if args.output_root:
@@ -646,4 +664,3 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-

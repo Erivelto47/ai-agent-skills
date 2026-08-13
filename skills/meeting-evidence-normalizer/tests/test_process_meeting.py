@@ -178,7 +178,27 @@ payload = {
         self.assertEqual(manifest["source"]["kind"], "raw_transcript")
         self.assertEqual(manifest["transcription"]["status"], "provided")
 
+    def test_discovers_project_local_config(self) -> None:
+        project = self.root / "project"
+        nested = project / "nested"
+        nested.mkdir(parents=True)
+        (project / ".meeting-evidence-normalizer.yaml").write_text(self.config.read_text(encoding="utf-8"), encoding="utf-8")
+        raw = nested / "raw.json"
+        raw.write_text(json.dumps({"text": "The customer plan belongs to this market.", "segments": []}), encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--raw-transcript", str(raw)],
+            text=True,
+            capture_output=True,
+            cwd=nested,
+            env=self.env(),
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(Path(payload["output"]).exists())
+
 
 if __name__ == "__main__":
     unittest.main()
-
