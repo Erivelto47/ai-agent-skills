@@ -63,6 +63,25 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         self.assertIn("SAMPLE READY", names)
         self.assertIn("Billing Workflow", names)
 
+    def test_symlink_escape_outside_repo_is_excluded_without_crashing(self) -> None:
+        self.write("src/status.txt", "INSIDE_SIGNAL\n")
+        subprocess.run(["git", "init"], cwd=self.repo, text=True, capture_output=True, check=True)
+        with tempfile.TemporaryDirectory() as outside_tmp:
+            outside = Path(outside_tmp)
+            (outside / "status.txt").write_text("OUTSIDE_SIGNAL\n", encoding="utf-8")
+            try:
+                (self.repo / "linked-status.txt").symlink_to(outside / "status.txt")
+            except OSError as exc:
+                self.skipTest(f"symlinks are not available: {exc}")
+
+            self.run_cli("--profile", "generic")
+
+        names = {item["canonical"] for item in self.load_terms()}
+        source_paths = {source["path"] for item in self.load_terms() for source in item["sources"]}
+        self.assertIn("INSIDE SIGNAL", names)
+        self.assertNotIn("OUTSIDE SIGNAL", names)
+        self.assertNotIn("linked-status.txt", source_paths)
+
     def test_auto_detects_java_kotlin_profile(self) -> None:
         self.write("pom.xml", "<project><modules><module>sample-service</module></modules></project>")
         self.write("src/main/kotlin/example/State.kt", "enum class State { SAMPLE_READY }\n")

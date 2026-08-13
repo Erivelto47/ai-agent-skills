@@ -28,6 +28,8 @@ Use `--transcripts /path/to/processed-meeting-outputs` to enable local spokennes
 
 `glossary-harvest-report.md` summarizes profile selection, extractor counts, scoring, rejected examples, and next steps.
 
+After reading each cited source, follow the Agent Discovery Procedure in `glossary-guide.md` to enrich accepted candidates. That procedure applies to code-harvested candidates the same way it applies to documentation-derived candidates.
+
 ## Scoring
 
 The score is:
@@ -90,4 +92,3 @@ Use `emits: alias_pair` when a filename or line records a rename. The regex must
 ## Local Real-Repository Validation
 
 Validation against a real repository is useful, but outputs can contain private vocabulary. Write them to `/tmp` or another ignored location and never commit them.
-

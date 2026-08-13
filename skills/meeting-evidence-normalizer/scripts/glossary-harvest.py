@@ -301,9 +301,16 @@ def list_repo_files(repo: Path, exclude_glob: tuple[str, ...]) -> list[Path]:
         paths = [p for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts]
     else:
         paths = [repo / rel for rel in git_files]
+    repo_root = repo.resolve()
+    repo_paths: list[tuple[str, Path]] = []
+    for path in paths:
+        try:
+            rel = path.resolve().relative_to(repo_root).as_posix()
+        except (OSError, ValueError):
+            continue
+        repo_paths.append((rel, path))
     filtered = []
-    for path in sorted(paths, key=lambda p: relative_posix(repo, p)):
-        rel = relative_posix(repo, path)
+    for rel, path in sorted(repo_paths):
         if any(match_glob(rel, pattern) for pattern in exclude_glob):
             continue
         if is_probably_text(path):

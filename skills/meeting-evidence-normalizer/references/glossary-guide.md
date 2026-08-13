@@ -59,6 +59,8 @@ Do not add:
 
 When asked to create a private glossary:
 
+Use this same procedure when enriching candidates produced by `scripts/glossary-harvest`.
+
 1. Ask the user which local sources may be inspected.
 2. Search only authorized sources.
 3. Prefer structured sources first: docs, READMEs, schemas, enums, API specs, migration names, and previous transcript artifacts.
@@ -67,4 +69,3 @@ When asked to create a private glossary:
 6. Add observed ASR variants only when a transcript contains the variant or mark it clearly as `hypothesis`.
 7. Keep unresolved terms as `unresolved_vocabulary` rather than forcing a false category.
 8. Show the user a review summary before treating a candidate as high confidence.
-
