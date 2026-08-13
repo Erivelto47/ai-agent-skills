@@ -178,6 +178,32 @@ payload = {
         self.assertEqual(manifest["source"]["kind"], "raw_transcript")
         self.assertEqual(manifest["transcription"]["status"], "provided")
 
+    def test_plain_observed_asr_variant_list_is_supported(self) -> None:
+        self.glossary.write_text(
+            """schema_version: 1
+terms:
+  - canonical: ExampleProduct
+    category: product
+    aliases: []
+    phonetic_aliases: []
+    observed_asr_variants:
+      - egg sample product
+    context_keywords: []
+    confidence: candidate
+""",
+            encoding="utf-8",
+        )
+        raw = self.root / "raw.json"
+        raw.write_text(json.dumps({"text": "egg sample product needs review.", "segments": []}), encoding="utf-8")
+
+        result = self.run_cli("--raw-transcript", str(raw), "--force")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        out = Path(payload["output"])
+        normalized = json.loads((out / "transcription.normalized.json").read_text())
+        self.assertEqual(normalized["segments"][0]["glossary_hits"][0]["match_type"], "observed_asr_variants")
+
     def test_discovers_project_local_config(self) -> None:
         project = self.root / "project"
         nested = project / "nested"

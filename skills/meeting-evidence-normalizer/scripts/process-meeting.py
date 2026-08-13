@@ -308,7 +308,7 @@ def load_glossary_terms(path_value: str) -> list[dict[str, Any]]:
     terms: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     list_key: str | None = None
-    list_fields = {"aliases", "phonetic_aliases", "context_keywords", "languages"}
+    list_fields = {"aliases", "phonetic_aliases", "observed_asr_variants", "context_keywords", "languages"}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
         if not line.strip():
@@ -320,6 +320,8 @@ def load_glossary_terms(path_value: str) -> list[dict[str, Any]]:
                 terms.append(current)
             current = {"canonical": stripped.split(":", 1)[1].strip().strip("'\"")}
             list_key = None
+        elif current is not None and list_key == "observed_asr_variants" and stripped.startswith("- value:"):
+            current.setdefault("observed_asr_variants", []).append(stripped.split("value:", 1)[1].strip().strip("'\""))
         elif current is not None and indent >= 4 and stripped.startswith("- ") and list_key in list_fields:
             current.setdefault(list_key, []).append(stripped[2:].strip().strip("'\""))
         elif current is not None and indent == 4 and ":" in stripped:
@@ -335,8 +337,6 @@ def load_glossary_terms(path_value: str) -> list[dict[str, Any]]:
             else:
                 current[key] = []
                 list_key = key
-        elif current is not None and "value:" in stripped and "observed_asr_variants" in (list_key or ""):
-            current.setdefault("observed_asr_variants", []).append(stripped.split("value:", 1)[1].strip().strip("'\""))
     if current:
         terms.append(current)
     return terms
