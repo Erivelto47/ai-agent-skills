@@ -30,6 +30,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 PROFILES_DIR = SKILL_DIR / "profiles"
 COMMON_WORDS_DIR = SKILL_DIR / "references" / "common-words"
+WORD_CHAR_CLASS = r"A-Za-zÀ-ÖØ-öø-ÿ0-9_"
 
 VALID_PROFILE_KEYS = {"name", "description", "detect", "exclude_glob", "extractors"}
 VALID_DETECT_KEYS = {"any_file_glob", "weight"}
@@ -496,8 +497,8 @@ def score_candidate(aggregate: Aggregate, common_words: set[str], spoken_index: 
 def spoken_score(term: str, spoken_index: set[str] | None) -> float:
     if spoken_index is None:
         return 1.0
-    variants = normalized_spoken_variants(term)
-    return 1.0 if any(variant in entry for variant in variants for entry in spoken_index) else 0.25
+    patterns = spoken_patterns(term)
+    return 1.0 if any(pattern.search(entry) for pattern in patterns for entry in spoken_index) else 0.25
 
 
 def commonness(term: str, common_words: set[str]) -> float:
@@ -530,9 +531,8 @@ def build_spoken_index(transcripts: Path | None) -> set[str] | None:
             if isinstance(payload.get("segments"), list):
                 texts.extend(str(item.get("text", "")) for item in payload["segments"] if isinstance(item, dict))
         for text in texts:
-            normalized = normalize_text(text)
+            normalized = normalize_spoken_text(text)
             index.add(normalized)
-            index.update(normalized.split())
     return index
 
 
@@ -644,6 +644,13 @@ def normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
+def normalize_spoken_text(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^A-Za-z0-9]+", " ", value.lower())
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def split_words(value: str) -> list[str]:
     value = humanize(value)
     value = unicodedata.normalize("NFKD", value)
@@ -651,13 +658,18 @@ def split_words(value: str) -> list[str]:
     return [word.lower() for word in re.split(r"[^A-Za-z0-9]+", value) if word]
 
 
-def normalized_spoken_variants(term: str) -> set[str]:
+def normalized_spoken_variant(term: str) -> str:
     words = split_words(term)
-    compact = "".join(words)
-    variants = {compact}
-    if words:
-        variants.add(" ".join(words))
-    return {normalize_text(v) for v in variants if v}
+    return " ".join(words)
+
+
+def spoken_patterns(term: str) -> list[re.Pattern[str]]:
+    variant = normalized_spoken_variant(term)
+    if not variant:
+        return []
+    escaped = re.escape(variant)
+    escaped = re.sub(r"(?:\\ |\\\t)+", r"\\s+", escaped)
+    return [re.compile(rf"(?<![{WORD_CHAR_CLASS}]){escaped}(?![{WORD_CHAR_CLASS}])", flags=re.IGNORECASE)]
 
 
 if __name__ == "__main__":

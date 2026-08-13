@@ -117,6 +117,39 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         silent = self.term("PUBLIC RIVER")["harvest"]["score"]
         self.assertGreater(spoken, silent)
 
+    def test_spokenness_does_not_match_across_word_boundaries_in_transcript_blob(self) -> None:
+        self.write("src/status.txt", "ZABC\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(
+            json.dumps({"segments": [{"text": "alpha xyz abc beta"}]}),
+            encoding="utf-8",
+        )
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertEqual(self.term("ZABC")["harvest"]["breakdown"]["spokenness"], 0.25)
+
+    def test_spokenness_matches_single_word_as_whole_word(self) -> None:
+        self.write("src/status.txt", "SIGNAL\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(json.dumps({"text": "The signal is ready."}), encoding="utf-8")
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertEqual(self.term("SIGNAL")["harvest"]["breakdown"]["spokenness"], 1.0)
+
+    def test_spokenness_does_not_match_fragment_inside_word(self) -> None:
+        self.write("src/status.txt", "MARK\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(json.dumps({"text": "The benchmark started early."}), encoding="utf-8")
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertEqual(self.term("MARK")["harvest"]["breakdown"]["spokenness"], 0.25)
+
     def test_transcript_matching_handles_spoken_word_boundaries(self) -> None:
         self.write("src/status.txt", "SAMPLE_BRIDGE\n")
         transcripts = self.root / "outputs" / "meeting"
@@ -129,6 +162,36 @@ class GlossaryHarvestCliTest(unittest.TestCase):
         self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
 
         self.assertEqual(self.term("SAMPLE BRIDGE")["harvest"]["breakdown"]["spokenness"], 1.0)
+
+    def test_spokenness_matches_multi_word_phrase_with_spacing_variation(self) -> None:
+        self.write("src/status.txt", "SAMPLE_PIPELINE\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(
+            json.dumps({"segments": [{"text": "Please review sample   pipeline setup."}]}),
+            encoding="utf-8",
+        )
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertEqual(self.term("SAMPLE PIPELINE")["harvest"]["breakdown"]["spokenness"], 1.0)
+
+    def test_spokenness_does_not_match_multi_word_phrase_when_only_one_word_appears(self) -> None:
+        self.write("src/status.txt", "SAMPLE_PIPELINE\n")
+        transcripts = self.root / "outputs" / "meeting"
+        transcripts.mkdir(parents=True)
+        (transcripts / "transcription.raw.json").write_text(json.dumps({"text": "The sample is ready."}), encoding="utf-8")
+
+        self.run_cli("--profile", "generic", "--transcripts", str(self.root / "outputs"))
+
+        self.assertEqual(self.term("SAMPLE PIPELINE")["harvest"]["breakdown"]["spokenness"], 0.25)
+
+    def test_spokenness_without_transcripts_remains_neutral(self) -> None:
+        self.write("src/status.txt", "SILENT_SIGNAL\n")
+
+        self.run_cli("--profile", "generic")
+
+        self.assertEqual(self.term("SILENT SIGNAL")["harvest"]["breakdown"]["spokenness"], 1.0)
 
     def test_unknown_profile_keys_fail_with_actionable_error(self) -> None:
         profile = self.root / "bad-profile.yaml"
