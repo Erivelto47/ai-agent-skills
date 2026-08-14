@@ -5,7 +5,7 @@ Reusable, public Agent Skills for Codex, Claude Code, and other tools that suppo
 ## Skills
 
 - `meeting-evidence-normalizer`: Turn local meeting recordings or existing transcript JSON files into traceable meeting evidence. Its main differentiator is glossary-aware normalization by canonical name, context, pronunciation, and observed ASR variants without rewriting uncertain audio as fact.
-- `spring-docs`: Ground Spring Framework, Spring Boot, Spring Data, and Spring project guidance in a local documentation index exposed through `spring-docs-mcp`.
+- `spring-docs`: Ground Spring Framework, Spring Boot, Spring Data, and Spring project guidance in a local documentation index exposed through [`spring-docs-mcp`](https://github.com/Erivelto47/mcp-toolkit/tree/main/packages/spring-docs-mcp).
 
 ## Install Locally
 
