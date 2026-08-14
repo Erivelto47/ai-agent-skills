@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spring Docs"
+  short_description: "Ground Spring answers in local indexed documentation."
+  default_prompt: "Use $spring-docs to answer this Spring question with local indexed evidence."

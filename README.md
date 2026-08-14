@@ -5,30 +5,31 @@ Reusable, public Agent Skills for Codex, Claude Code, and other tools that suppo
 ## Skills
 
 - `meeting-evidence-normalizer`: Turn local meeting recordings or existing transcript JSON files into traceable meeting evidence. Its main differentiator is glossary-aware normalization by canonical name, context, pronunciation, and observed ASR variants without rewriting uncertain audio as fact.
+- `spring-docs`: Ground Spring Framework, Spring Boot, Spring Data, and Spring project guidance in a local documentation index exposed through `spring-docs-mcp`.
 
 ## Install Locally
 
 Clone this repository, then expose the skill folder to your agent.
 
-Codex-compatible local skills:
+Generic local skills folder:
 
 ```bash
 mkdir -p ~/.agents/skills
-ln -s "$PWD/skills/meeting-evidence-normalizer" ~/.agents/skills/meeting-evidence-normalizer
+for skill in skills/*; do ln -sfn "$PWD/$skill" ~/.agents/skills/"$(basename "$skill")"; done
 ```
 
 Claude Code local skills:
 
 ```bash
 mkdir -p ~/.claude/skills
-ln -s "$PWD/skills/meeting-evidence-normalizer" ~/.claude/skills/meeting-evidence-normalizer
+for skill in skills/*; do ln -sfn "$PWD/$skill" ~/.claude/skills/"$(basename "$skill")"; done
 ```
 
 Project-scoped Claude Code skill:
 
 ```bash
 mkdir -p .claude/skills
-ln -s "$PWD/skills/meeting-evidence-normalizer" .claude/skills/meeting-evidence-normalizer
+for skill in skills/*; do ln -sfn "$PWD/$skill" .claude/skills/"$(basename "$skill")"; done
 ```
 
 ## Private Configuration
