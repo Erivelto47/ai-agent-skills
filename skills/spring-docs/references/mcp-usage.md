@@ -16,7 +16,18 @@ Typical config variable:
 SPRING_DOCS_MCP_CONFIG=/path/to/spring-docs.yaml
 ```
 
-The MCP reads a local JSONL index. It does not crawl the internet, execute build tools, run tests, or bundle Spring documentation.
+The MCP server reads a local JSONL index. It does not execute build tools, run tests, or bundle Spring documentation.
+
+The public package can also bootstrap a local index from official Spring HTML documentation:
+
+```bash
+spring-docs-mcp init --allowed-root /path/to/projects
+spring-docs-mcp index --source spring-boot --version 3.4
+spring-docs-mcp index --source spring-framework --version 6.2
+spring-docs-mcp serve
+```
+
+Use those commands as setup guidance when `spring_docs_health` reports a missing or empty index.
 
 ## Tools
 
@@ -45,6 +56,6 @@ For project-specific questions:
 
 If tools are unavailable, say the Spring Docs MCP is not available in this session. Do not pretend that local indexed docs were consulted.
 
-If health returns warnings or zero chunks, explain that the MCP is configured but lacks usable local evidence.
+If health returns warnings or zero chunks, explain that the MCP is configured but lacks usable local evidence. Suggest `spring-docs-mcp index` for the relevant Spring source and version when the package CLI is available.
 
 If search has low or no match quality, ask for a narrower topic, a version, or an expanded index when that would change the answer.
