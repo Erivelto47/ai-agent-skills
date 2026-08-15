@@ -5,7 +5,11 @@ Reusable, public Agent Skills for Codex, Claude Code, and other tools that suppo
 ## Skills
 
 - `meeting-evidence-normalizer`: Turn local meeting recordings or existing transcript JSON files into traceable meeting evidence. Its main differentiator is glossary-aware normalization by canonical name, context, pronunciation, and observed ASR variants without rewriting uncertain audio as fact.
-- `spring-docs`: Ground Spring Framework, Spring Boot, Spring Data, and Spring project guidance in a local documentation index exposed through [`spring-docs-mcp`](https://github.com/Erivelto47/mcp-toolkit/tree/main/packages/spring-docs-mcp).
+- `spring-docs`: Ground Spring Framework, Spring Boot, Spring Data, and Spring project guidance in a local documentation index exposed through a compatible `spring-docs-mcp` server.
+- `codebase-discovery`: Map existing code paths, data flow, integrations, persistence, tests, and evidence before implementation.
+- `implementation-from-discovery`: Turn validated findings into minimal, tested, reviewable changes.
+- `runtime-debugging`: Diagnose runtime failures through reproduction, evidence, hypotheses, fixes, and regression checks.
+- `multi-agent-orchestration`: Coordinate bounded agent roles, capabilities, ownership, evidence, and validation gates.
 
 ## Install Locally
 

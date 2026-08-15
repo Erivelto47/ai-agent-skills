@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation From Discovery"
+  short_description: "Turn verified findings into safe changes."
+  default_prompt: "Use $implementation-from-discovery to implement a minimal change from this validated discovery report."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codebase Discovery"
+  short_description: "Map existing code with evidence."
+  default_prompt: "Use $codebase-discovery to map the relevant code path before proposing a change."

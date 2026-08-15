@@ -7,7 +7,7 @@ Use any MCP server that exposes the Spring Docs tool contract below.
 One public npm implementation is:
 
 ```text
-@erivelto_muller/spring-docs-mcp
+spring-docs-mcp
 ```
 
 Typical config variable:

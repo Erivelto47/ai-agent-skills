@@ -1,0 +1,4 @@
+interface:
+  display_name: "Runtime Debugging"
+  short_description: "Diagnose runtime failures with evidence."
+  default_prompt: "Use $runtime-debugging to reproduce and diagnose this runtime failure with an evidence trail."
