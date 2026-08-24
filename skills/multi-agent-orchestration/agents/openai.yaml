@@ -1,4 +1,4 @@
 interface:
   display_name: "Multi-Agent Orchestration"
-  short_description: "Coordinate bounded agent work with gates."
-  default_prompt: "Use $multi-agent-orchestration to decompose this engineering task into bounded, verifiable work."
+  short_description: "Coordinate bounded work across agent providers."
+  default_prompt: "Use $multi-agent-orchestration to coordinate this engineering task across the best available tools, agents, task surfaces, and providers while preserving budget and validation gates."
