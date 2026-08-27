@@ -48,6 +48,7 @@ Keep roles abstract. A role may be fulfilled by the coordinator's native agent, 
 - Use a stronger model or alternate provider for difficult coding when a cheap worker would create rework. Keep reviewers independent from the implementation path when risk warrants it.
 - Read [references/executor-selection.md](references/executor-selection.md) when more than one provider, model tier, quota pool, or execution surface is available.
 - When the active coordinator is Codex, read [references/codex-orchestration.md](references/codex-orchestration.md) before dispatching Codex subagents, separate tasks, custom agents, or external agent CLIs.
+- When the active coordinator is Claude Code, read [references/claude-orchestration.md](references/claude-orchestration.md) before dispatching Claude Code subagents, agent teams, custom subagent definitions, or separate sessions.
 
 ### 4. Dispatch bounded tasks
 
