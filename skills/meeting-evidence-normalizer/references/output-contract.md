@@ -41,4 +41,4 @@ Chunked transcription writes intermediate chunk audio, per-chunk raw JSON, and p
 
 `uncertainties.json` stores low-confidence acoustic ranges, excluded repeated ASR runs, uncertain terms, context-only glossary candidates, ASR variant candidates, contradictions, self-corrections, and validation promises. Excluded repeated ASR runs appear in `excluded_low_confidence` with `type: asr_repetition_excluded`, a shortened text sample, repeat count, and timestamp/segment range.
 
-`meeting.md` is the human and agent handoff summary. It must not include full raw transcript text. When ASR degeneration is suspected, it includes a top-level `Quality Warning` before counts so readers treat the repeated range as unreliable.
+`meeting.md` is the human and agent summary of the processed evidence, written for whoever processed the meeting. It is not the shareable handoff document; see `handoff-guide.md` for that. It must not include full raw transcript text. When ASR degeneration is suspected, it includes a top-level `Quality Warning` before counts so readers treat the repeated range as unreliable.

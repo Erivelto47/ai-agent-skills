@@ -1,6 +1,6 @@
 ---
 name: meeting-evidence-normalizer
-description: Transform local meeting recordings or transcript JSON files into traceable meeting knowledge. Use when an agent needs to transcribe or normalize a meeting, preserve raw ASR output, generate evidence.json, uncertainties.json, meeting.md, and manifest.json, or use a configurable glossary to identify domain terms by canonical name, aliases, context keywords, pronunciation, and observed ASR variants without promoting uncertain audio to fact.
+description: Transform local meeting recordings or transcript JSON files into traceable meeting knowledge. Use when an agent needs to transcribe or normalize a meeting, preserve raw ASR output, generate evidence.json, uncertainties.json, meeting.md, and manifest.json, or use a configurable glossary to identify domain terms by canonical name, aliases, context keywords, pronunciation, and observed ASR variants without promoting uncertain audio to fact. Also use to turn processed meeting evidence into a shareable handoff document (summary, decisions, open questions, mandatory AI section) and to give a non-technical reader a prompt for researching it against a codebase.
 ---
 
 # Meeting Evidence Normalizer
@@ -96,6 +96,18 @@ Use `scripts/glossary-harvest` when a user wants to bootstrap or refresh a priva
 - Use `scripts/glossary-confirm` only after each input `candidates.yaml` was generated with `--transcripts`; it requires `spokenness_active: true`.
 - Treat `confidence: cross_source_confirmed` as a review batch, not as permission to write directly to `domain-glossary.yaml`.
 
+## Handoff
+
+Use this when the user wants the meeting turned into a document for someone who was not there, and for that person's AI agent. It is a separate step after normalization; `meeting.md` is not a handoff.
+
+1. Read `references/handoff-guide.md` first. It defines the readers, the principles (claims not facts, shareable by default, names only when confirmed, every drawing has a text equivalent), the required front matter, the fixed section order, the status vocabulary, and the mandatory AI section.
+2. Start from `references/handoff-template.md`. Draft from `meeting.md`, `evidence.json`, and `uncertainties.json`; do not re-transcribe.
+3. Ask the user about anything the evidence cannot settle (which names are confirmed, which option was chosen, who the two sides are). Never infer names from voices or guesses; use neutral role labels instead.
+4. Keep recording references, output directories, and segment ids out of the handoff. Put them in a private companion file that is not shared.
+5. Run `scripts/validate-handoff.py <handoff.md>`. Fix every error and read every warning before delivering.
+6. When the reader is non-technical and will use an agent to check the handoff against a codebase, give them `references/business-agent-prompt.md` (paste only the fenced block) together with the handoff. Both the generation and the use require a high-capability agent (`min_agent_tier: frontier`); if the user only has a small local model, say so and suggest a stronger one.
+7. A handoff authorizes no action. Do not commit, publish, or send it without the user's explicit go-ahead, and keep real project terms, names, and meeting content out of this public skill.
+
 ## Safety Rules
 
 - Keep processing local unless the user explicitly authorizes a cloud service.
@@ -117,3 +129,6 @@ Read only what the task needs:
 - `references/glossary-harvest-guide.md` for deterministic repository harvesting.
 - `references/glossary.schema.yaml` for glossary fields.
 - `references/glossary.example.yaml` for neutral examples.
+- `references/handoff-guide.md` for the handoff standard.
+- `references/handoff-template.md` for the handoff skeleton.
+- `references/business-agent-prompt.md` for the prompt a non-technical reader gives their agent.
