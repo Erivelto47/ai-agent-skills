@@ -1,0 +1,265 @@
+<!--
+  Reference implementation for the "status tracker" shape described in
+  ../SKILL.md. This is a full working example so the CSS token structure,
+  component patterns, and section order are all provable, not just described
+  in prose. The ticket, phases, and copy below are entirely fictional.
+
+  Do not publish this file's content verbatim for a real project. Read it for
+  structure — progress card, phase list, and blocker callout — then pick fresh colors and typography for the actual subject. If
+  artifact-design is available, follow its per-subject calibration guidance.
+-->
+<title>Document Search — Example</title>
+<meta name="description" content="Fictional example status tracker for a document search feature.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f3f8;
+    --surface: #ffffff;
+    --surface-sunken: #ebe9f2;
+    --ink: #201c2b;
+    --ink-muted: #635d75;
+    --ink-faint: #948da3;
+    --accent: #5b4fc4;
+    --accent-ink: #ffffff;
+    --accent-soft: #eae7fa;
+    --line: #dfdaeb;
+    --amber: #9a6b12;
+    --amber-soft: #f6ecd6;
+    --amber-ink: #6b4c0d;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131018;
+      --surface: #1c1826;
+      --surface-sunken: #171320;
+      --ink: #ece9f4;
+      --ink-muted: #a89fbf;
+      --ink-faint: #726a87;
+      --accent: #a89dfa;
+      --accent-ink: #1a1330;
+      --accent-soft: #2a2244;
+      --line: #2c2639;
+      --amber: #e0b559;
+      --amber-soft: #332a14;
+      --amber-ink: #f3dca6;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #131018;
+    --surface: #1c1826;
+    --surface-sunken: #171320;
+    --ink: #ece9f4;
+    --ink-muted: #a89fbf;
+    --ink-faint: #726a87;
+    --accent: #a89dfa;
+    --accent-ink: #1a1330;
+    --accent-soft: #2a2244;
+    --line: #2c2639;
+    --amber: #e0b559;
+    --amber-soft: #332a14;
+    --amber-ink: #f3dca6;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 5rem; }
+
+  header.hero { margin-bottom: 2.75rem; }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(1.9rem, 4vw, 2.5rem);
+    line-height: 1.18;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+
+  .dek { color: var(--ink-muted); font-size: 1.02rem; max-width: 58ch; margin: 0; }
+
+  section { margin-top: 2.5rem; }
+
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; margin: 0 0 1rem; }
+
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.5rem 1.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .progress-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+
+  .progress-count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.95rem;
+    color: var(--ink-muted);
+  }
+
+  .progress-count strong { color: var(--ink); font-size: 1.15rem; }
+
+  .progress-pct {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .progress-track { height: 8px; border-radius: 999px; background: var(--surface-sunken); overflow: hidden; }
+
+  .progress-fill { height: 100%; border-radius: 999px; background: var(--accent); width: 25%; }
+
+  .phase-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .phase {
+    display: grid;
+    grid-template-columns: 2rem 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+  }
+
+  .phase.done { background: transparent; }
+  .phase.active { background: var(--accent-soft); border-color: var(--accent); }
+  .phase.pending { background: transparent; }
+  .phase.blocked { background: var(--amber-soft); border-color: var(--amber); }
+
+  .phase-num { font-family: var(--font-mono); font-size: 0.85rem; color: var(--ink-faint); text-align: right; }
+  .phase.done .phase-num, .phase.active .phase-num { color: var(--ink-muted); }
+
+  .phase-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+  .phase-title { font-weight: 500; font-size: 0.98rem; }
+  .phase.done .phase-title { color: var(--ink-muted); }
+  .phase-note { font-size: 0.86rem; color: var(--ink-faint); }
+
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.28rem 0.6rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .badge.done { background: var(--surface-sunken); color: var(--ink-muted); }
+  .badge.active { background: var(--accent); color: var(--accent-ink); }
+  .badge.pending { background: var(--surface-sunken); color: var(--ink-faint); border: 1px dashed var(--line); }
+  .badge.blocked { background: var(--amber); color: var(--amber-ink); }
+
+  .diagram-wrap {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.5rem;
+    overflow-x: auto;
+  }
+
+  pre.mermaid { margin: 0; font-family: var(--font-body); }
+
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 1.25rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .callout.warn { border-left-color: var(--amber); }
+
+  .callout-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .callout.warn .callout-label { color: var(--amber); }
+  .callout p { margin: 0; font-size: 0.96rem; }
+  .callout ul { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.94rem; }
+  .callout li { margin: 0.25rem 0; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--surface-sunken);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+  }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+    font-family: var(--font-mono);
+  }
+</style>
+
+<div class="page">
+  <header class="hero">
+    <div class="eyebrow">EXAMPLE-000 &middot; sample-project</div>
+    <h1>Make documents easier to find</h1>
+    <p class="dek">A fictional project adds search to a collection of documents.</p>
+  </header>
+  <section><div class="progress-card"><div class="progress-top">
+    <span class="progress-count"><strong>1</strong> of 4 phases done</span><span class="progress-pct">25%</span>
+  </div><div class="progress-track"><div class="progress-fill"></div></div></div></section>
+  <section><h2>Phases</h2><div class="phase-list">
+    <div class="phase done"><span class="phase-num">1</span><div class="phase-body"><span class="phase-title">Define search scope</span><span class="phase-note">Agree on searchable fields.</span></div><span class="badge done">Done</span></div>
+    <div class="phase active"><span class="phase-num">2</span><div class="phase-body"><span class="phase-title">Build search</span><span class="phase-note">Implement the search interface.</span></div><span class="badge active">In progress</span></div>
+    <div class="phase blocked"><span class="phase-num">3</span><div class="phase-body"><span class="phase-title">Choose ranking</span><span class="phase-note">Await a decision on result ordering.</span></div><span class="badge blocked">Blocked</span></div>
+    <div class="phase pending"><span class="phase-num">4</span><div class="phase-body"><span class="phase-title">Validate</span><span class="phase-note">Check representative search scenarios.</span></div><span class="badge pending">Planned</span></div>
+  </div></section>
+  <section><div class="callout warn"><span class="callout-label">Phase 3 &middot; blocked</span><p>Choose how matching documents should be ordered.</p></div></section>
+  <footer>Fictional example status tracker &middot; sample-project</footer>
+</div>

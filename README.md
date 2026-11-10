@@ -10,6 +10,7 @@ Reusable, public Agent Skills for Codex, Claude Code, and other tools that suppo
 - `implementation-from-discovery`: Turn validated findings into minimal, tested, reviewable changes.
 - `runtime-debugging`: Diagnose runtime failures through reproduction, evidence, hypotheses, fixes, and regression checks.
 - `multi-agent-orchestration`: Coordinate bounded agent roles, capabilities, ownership, evidence, and validation gates.
+- `engineering-report-artifacts`: Create a polished engineering status tracker or code-review report — a phase/status tracker for a multi-session implementation, or a code-review findings report with a real snippet, why it matters, and its connections per finding. Works on both Claude Code (a private Artifact) and Codex (a local static HTML file or Markdown, per its Delivery mode section).
 
 ## Install Locally
 
@@ -27,6 +28,13 @@ Claude Code local skills:
 ```bash
 mkdir -p ~/.claude/skills
 for skill in skills/*; do ln -sfn "$PWD/$skill" ~/.claude/skills/"$(basename "$skill")"; done
+```
+
+Codex local skills:
+
+```bash
+mkdir -p ~/.codex/skills
+for skill in skills/*; do ln -sfn "$PWD/$skill" ~/.codex/skills/"$(basename "$skill")"; done
 ```
 
 Project-scoped Claude Code skill:
